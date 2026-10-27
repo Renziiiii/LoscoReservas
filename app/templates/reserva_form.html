@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ "Editar reserva" if reserva else "Nueva reserva" }} — Losco{% endblock %}
+{% block content %}
+<h1>{{ "Editar reserva" if reserva else "Nueva reserva" }}</h1>
+
+<form method="post" action="{{ '/reservas/' ~ reserva.id if reserva else '/reservas' }}" class="stack">
+  {% for field, message in (errors or {}).items() %}
+  <p class="error">{{ field }}: {{ message }}</p>
+  {% endfor %}
+
+  <label>Nombre* <input name="nombre" value="{{ values.nombre or (reserva.nombre if reserva else '') }}" required></label>
+
+  <label>Teléfono* <input name="telefono" placeholder="+54 9 11 5555-1234"
+    value="{{ values.telefono or (reserva.telefono if reserva else '') }}" required></label>
+
+  <div class="row">
+    <label>Fecha* <input type="date" name="fecha"
+      value="{{ values.fecha or (reserva.fecha if reserva else '') }}" required></label>
+    <label>Hora* <input type="time" name="hora"
+      value="{{ values.hora if values else (reserva.hora.strftime('%H:%M') if reserva else '') }}" required></label>
+    <label>Personas* <input type="number" name="personas" min="1" max="200"
+      value="{{ values.personas or (reserva.personas if reserva else 2) }}" required></label>
+  </div>
+
+  <label>Estado
+    <select name="estado">
+      {% for e in estados %}
+      <option value="{{ e }}" {% if (values.estado or (reserva.estado if reserva else 'pendiente')) == e %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>Detalles <textarea name="detalles" rows="2">{{ values.detalles or (reserva.detalles if reserva else '') }}</textarea></label>
+
+  <label class="check">
+    <input type="checkbox" name="enviar_recordatorio"
+      {% if (values.enviar_recordatorio if values.enviar_recordatorio is defined else (reserva.enviar_recordatorio if reserva else True)) %}checked{% endif %}>
+    Enviar recordatorio
+  </label>
+
+  <div class="row">
+    <button class="btn primary" type="submit">Guardar</button>
+    <a class="btn" href="/">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

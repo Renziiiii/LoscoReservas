@@ -1,0 +1,19 @@
+{% for r in reservas %}
+<tr>
+  <td>{{ r.fecha }}</td>
+  <td>{{ r.hora.strftime("%H:%M") }}</td>
+  <td>{{ r.nombre }}{% if r.detalles %}<div class="muted">{{ r.detalles }}</div>{% endif %}</td>
+  <td>{{ r.telefono }}</td>
+  <td>{{ r.personas }}</td>
+  <td><span class="badge {{ r.estado }}">{{ r.estado }}</span></td>
+  <td>{{ "✓" if r.enviar_recordatorio else "—" }}</td>
+  <td class="actions">
+    <a class="btn small" href="/reservas/{{ r.id }}/editar">Editar</a>
+    <form method="post" action="/reservas/{{ r.id }}/eliminar" class="inline"
+          hx-post="/reservas/{{ r.id }}/eliminar" hx-target="closest tr" hx-swap="outerHTML"
+          hx-confirm="¿Eliminar la reserva de {{ r.nombre }}?">
+      <button class="btn small danger">Borrar</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}

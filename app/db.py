@@ -7,8 +7,16 @@ not viable for this workload. WAL mode allows reads while a write happens.
 
 from pathlib import Path
 
+from fastapi import Request
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from typing import Iterator
+
+
+def get_session(request: Request) -> Iterator[Session]:
+    """Dependency: one session per request, bound to this app's engine."""
+    with request.app.state.sessionmaker() as session:
+        yield session
 
 
 class Base(DeclarativeBase):

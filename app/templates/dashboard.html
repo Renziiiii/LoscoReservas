@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Reservas</h1>
+
+<form method="get" action="/" class="filters">
+  <label>Estado
+    <select name="estado">
+      <option value="">Todos</option>
+      {% for e in estados %}
+      <option value="{{ e }}" {% if e == estado %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Fecha <input type="date" name="fecha" value="{{ fecha or '' }}"></label>
+  <button class="btn" type="submit">Filtrar</button>
+  <a class="btn" href="/">Limpiar</a>
+</form>
+
+<table>
+  <thead>
+    <tr><th>Fecha</th><th>Hora</th><th>Nombre</th><th>Teléfono</th><th>Personas</th><th>Estado</th><th>Record.</th><th></th></tr>
+  </thead>
+  <tbody id="reservas">
+    {% include "_rows.html" %}
+  </tbody>
+</table>
+{% if not reservas %}<p class="empty">No hay reservas para este filtro.</p>{% endif %}
+{% endblock %}

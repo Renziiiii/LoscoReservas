@@ -1,21 +1,14 @@
 """CRUD REST endpoints for reservas (S1: "CRUD con API")."""
 
-from typing import Iterator
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
+from app.db import get_session
 from app.models import Reserva
-from app.schemas import ReservaCreate, ReservaOut, ReservaUpdate
+from app.schemas import ReservaOut, ReservaCreate, ReservaUpdate
 
 router = APIRouter(prefix="/api/reservas", tags=["reservas"])
-
-
-def get_session(request: Request) -> Iterator[Session]:
-    """One session per request, bound to this app's engine."""
-    with request.app.state.sessionmaker() as session:
-        yield session
 
 
 def _get_or_404(reserva_id: int, session: Session) -> Reserva:

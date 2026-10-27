@@ -46,7 +46,10 @@ def create_access_token(settings, username: str) -> str:
 def get_current_user(
     request: Request, token: str | None = Depends(oauth2_scheme)
 ) -> str:
-    """Dependency: the authenticated username, or 401."""
+    """Dependency: the authenticated username, or 401. Accepts the standard
+    Bearer header (API clients) or the `losco_session` cookie (browser)."""
+    if token is None:
+        token = request.cookies.get("losco_session")
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

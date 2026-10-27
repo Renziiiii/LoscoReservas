@@ -1,14 +1,17 @@
 """FastAPI application factory."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import sessionmaker
 
 from app import models  # noqa: F401 — registers models on Base before create_all
 from app.config import Settings
 from app.db import Base, make_engine
 from app.auth import router as auth_router, get_current_user
+from app.dash import public_router as dash_public_router, router as dash_router
 from app.reservas import router as reservas_router
 
 
@@ -30,7 +33,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessionmaker = sessionmaker(engine)
     app.state.settings = settings
     app.include_router(auth_router)
+    app.include_router(dash_public_router)
+    app.include_router(dash_router)
     app.include_router(reservas_router, dependencies=[Depends(get_current_user)])
+
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     @app.get("/api/health", tags=["meta"])
     def health() -> dict:
