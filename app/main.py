@@ -2,12 +2,13 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from sqlalchemy.orm import sessionmaker
 
 from app import models  # noqa: F401 — registers models on Base before create_all
 from app.config import Settings
 from app.db import Base, make_engine
+from app.auth import router as auth_router, get_current_user
 from app.reservas import router as reservas_router
 
 
@@ -28,7 +29,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.sessionmaker = sessionmaker(engine)
     app.state.settings = settings
-    app.include_router(reservas_router)
+    app.include_router(auth_router)
+    app.include_router(reservas_router, dependencies=[Depends(get_current_user)])
 
     @app.get("/api/health", tags=["meta"])
     def health() -> dict:
