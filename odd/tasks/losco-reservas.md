@@ -1,0 +1,40 @@
+# LoscoReservas — gestión de reservas del bar (API + dashboard + mensajería)
+
+Objetivo: reemplazar el Google Sheets del local por una API de reservas autohospedada, con dashboard admin, mensajería WhatsApp automatizada vía Chatwoot, e iframe por contacto. Branch: `feature/losco-reservas` (desde `master`). Estrategia de entrega: `ask-on-risk` (repo local sin remote; commits por unidad de trabajo, sin PR). Test runner: `pytest`.
+
+## Specs
+
+- **S1** (CRUD API): "CRUD con API" — crear, leer, actualizar y borrar reservas a través de una API REST, con validación.
+- **S2** (Docker): "La app va a estar dockerizada para mayor control y seguridad".
+- **S3** (Mensajería): "Que 24hs antes se le envie un mensaje personalizado al cliente, confirmando invitados" / "Que 48hs antes, un mensje confirmando la reserva". **Decisión del usuario (L3, definitiva)**: se usa la regla de Valen: "2 dias antes mejor (para confirmar la reserva)" y "El mismo dia de la reserva que confirme la cantidad de invitados / Entre as 17 y 18". → T-48h: confirmar reserva; día D entre 17:00 y 18:00: confirmar cantidad de invitados.
+- **S4** (iframe Chatwoot): "Que en chatwoot se incerte un inframe que muestre las reseras de ese ususario (Puede ser por instagram, wsp, messenger) Chatwoot se encarga de eso" — página por teléfono del contacto, embebible como iframe en Chatwoot.
+- **S5** (Dashboard admin): "Tiene que haber un dashbord donde pueda ver todas las reservas, actualmente usan un google sheets". **Decisión del usuario (L4)**: Jinja2 + HTMX server-rendered por FastAPI, un solo servicio.
+- **S6** (IA futura, constraint de diseño): "Esa api se tiene que servir para que mas adelante, cuando el cliente quiera una IA en su chat, que esta pueda use esata api para regisrar las reservas" — la API debe quedar documentada (OpenAPI) y lista para ese consumo futuro.
+- **S7** (Campos de DB): "DB con: id,nombre,telefono,fecha, hora personas, estado, detalles, enviar recordatorio,".
+- **S8** (Cron): "Un cron que cada dia, verifica a un horario especifico que corra un script para enviarle msg de wsp a la gente que tiene que confirar personas".
+- **S9** (Deploy): "Si es posible, desplegar la infrastructura en el server de losco" — LoscoServer (143.95.165.168, 1 núcleo, 1.9 GB RAM). **Decisión del usuario (L2)**: SQLite self-hosted en LoscoServer, un solo contenedor junto a Chatwoot; sin Postgres propio ni InsForge.
+
+Asumpciones del arquitecto (marcadas como tales):
+- A1: Login propio simple (JWT, usuarios Valen/admin sembrados por env) para dashboard y API de escritura.
+- A2: Los mensajes se envían a través de la **API de Chatwoot** (token de agente/admin) para que queden en los mismos hilos de conversación.
+- A3: Las confirmaciones de reserva son plantillas WhatsApp tipo **UTILITY** (no MARKETING, que es para la campaña de los 900 contactos — alcance futuro, fuera de este feature). Requiere aprobación de Meta: dependencia externa.
+
+## Tasks
+
+- **T1** — S2, S7 — inline — Scaffold del proyecto: FastAPI + SQLite (WAL), schema de `reservas`, Dockerfile + compose, estructura de tests. Commit: (pendiente)
+- **T2** — S1, S6 — inline — CRUD REST de reservas con validación (Pydantic), tests RED→GREEN. Commit: (pendiente)
+- **T3** — S1, S5 — inline — Auth: login JWT, usuarios por env, protección de rutas API + dashboard. Commit: (pendiente)
+- **T4** — S5, S7 — inline — Dashboard Jinja2+HTMX: lista con filtros, alta/edición/baja de reservas. Commit: (pendiente)
+- **T5** — S3, S8 — inline — Scheduler diario (17:00) + jobs T-48h y día D 17-18h, cliente Chatwoot API con tests en mocks (token real: dependencia externa). Commit: (pendiente)
+- **T6** — S4 — inline — Página iframe por teléfono (URL firmada) + guía de inserción en Chatwoot. Commit: (pendiente)
+- **T7** — S2, S9 — inline — Deploy en LoscoServer (compose al lado de Chatwoot, volumen SQLite, backup simple). Commit: (pendiente)
+- **T8** — S6 — inline — README + documentación OpenAPI para consumo futuro por IA. Commit: (pendiente)
+
+## Log
+
+- **L1** (pedido original, textual): "Hola gentelment! Miratte la nota que te deje en @Gentelment.md" — la nota `Gentelment.md` contiene los requisitos completos del proyecto (mini-app de reservas para el cliente Valen/Losco).
+- **L2** (decisiones del usuario, 1ª ronda): Stack **Python + FastAPI**; infra **self-hosted en LoscoServer** ("Me gustaria que sea en el servidor de Losco, pero como veras tiene pocos recursos *(Tenes el ssh) Entoces un postgres no veo muy viable"); **Chatwoot ya corre en LoscoServer**; regla de mensajería **Valen: T-48h + día D 17-18h**.
+- **L3** (regla definitiva de mensajería): la nota tenía un conflicto (encabezado: "24hs antes invitados / 48hs antes reserva") vs. comentarios de Valen ("2 dias antes mejor (para confirmar la reserva)" / "El mismo dia de la reserva que confirme la cantidad de invitados / Entre as 17 y 18"). El usuario eligió la versión de Valen.
+- **L4** (decisiones del usuario, 2ª ronda): dashboard **Jinja2 + HTMX** (un solo servicio, server-rendered); **sin migración del Google Sheet** — "No, de cero".
+- **L5** (evidencia de server, inspección SSH del 2026-02): LoscoServer = vpsar-2058113 (143.95.165.168), 1 núcleo, 1.9 GB RAM (≈690 MB disponibles), 49 GB disco (32 libres), 1.9 GB swap. Corriendo: chatwoot-rails, chatwoot-sidekiq, chatwoot-redis, chatwoot-postgres (pgvector pg16, imagen `chatwoot/chatwoot:aug2026-rollback`), `transcriptor`. Decisión: SQLite + un solo contenedor propio; no se toca el stack de Chatwoot.
+- **L6** (dependencias externas abiertas): token de API de Chatwoot (agente/admin) y account id — los pide el usuario a Valen; aprobación de plantillas UTILITY en Meta. No bloquean el desarrollo con mocks, sí la prueba real de mensajería.

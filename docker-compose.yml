@@ -1,0 +1,12 @@
+services:
+  reservas:
+    build: .
+    container_name: losco-reservas
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      LOSCO_DATABASE_PATH: /data/reservas.db
+      LOSCO_TZ: America/Argentina/Buenos_Aires
