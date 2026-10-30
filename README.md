@@ -13,12 +13,17 @@ iframe de reservas por contacto dentro de Chatwoot.
 - **Dashboard admin** server-rendered (Jinja2 + HTMX): login, lista con
   filtros, alta/edición/baja.
 - **Mensajería automatizada** (regla de Valen): T-48h confirmación de la
-  reserva (hora configurable, default 09:00) y el mismo día entre 17:00 y
-  18:00 confirmación de invitados (default 17:15). Consciente del canal:
-  fuera de la ventana de 24hs en WhatsApp usa plantillas UTILITY
-  aprobadas; dentro de la ventana usa texto libre; Instagram/Messenger
-  fuera de ventana no permite mensajes iniciados por el negocio (se
-  registra la falla).
+  reserva y el mismo día entre 17:00 y 18:00 confirmación de invitados
+  (horas y plantillas se configuran en el panel, `/ajustes`, sin reiniciar
+  el contenedor). Consciente del canal: fuera de la ventana de 24hs en
+  WhatsApp usa plantillas UTILITY aprobadas (se eligen desde el panel,
+  listadas directo de la API de Chatwoot); dentro de la ventana usa texto
+  libre; Instagram/Messenger fuera de ventana no permite mensajes iniciados
+  por el negocio (se registra la falla). Cada reserva puede excluirse de
+  los recordatorios (checkbox "Enviar recordatorios", default sí).
+- **Etiqueta "Reserva confirmada" en Chatwoot**: al confirmar una reserva
+  (dashboard, iframe o API) el contacto recibe esa etiqueta automáticamente
+  (fail-soft: sin token configurado el guardado no falla).
 - **Iframe en Chatwoot** con las reservas del contacto de la conversación
   (mecanismo Dashboard Apps) — ver `docs/iframe-chatwoot.md`.
 
@@ -97,10 +102,10 @@ Ver `env.example` con todos los valores y comentarios. Resumen:
 | `LOSCO_CHATWOOT_BASE_URL` | vacío | URL de la API de Chatwoot |
 | `LOSCO_CHATWOOT_API_TOKEN` | vacío | Token de agente/admin de Chatwoot |
 | `LOSCO_CHATWOOT_ACCOUNT_ID` | `0` | Account id de Chatwoot |
-| `LOSCO_TEMPLATE_CONFIRMACION` | `reserva_confirmacion` | Plantilla UTILITY T-48h (aprobada por Meta) |
-| `LOSCO_TEMPLATE_INVITADOS` | `invitados_confirmacion` | Plantilla UTILITY día D |
-| `LOSCO_HORA_CONFIRMACION` | `09:00` | Hora del job T-48h |
-| `LOSCO_HORA_INVITADOS` | `17:15` | Hora del job de invitados (ventana Valen 17-18h) |
+| `LOSCO_TEMPLATE_CONFIRMACION` | `reserva_confirmacion` | Valor inicial de la plantilla T-48h — después se edita en el panel (`/ajustes`) |
+| `LOSCO_TEMPLATE_INVITADOS` | `invitados_confirmacion` | Valor inicial de la plantilla día D — después se edita en el panel (`/ajustes`) |
+| `LOSCO_HORA_CONFIRMACION` | `09:00` | Valor inicial de la hora T-48h — después se edita en el panel (`/ajustes`) |
+| `LOSCO_HORA_INVITADOS` | `17:15` | Valor inicial de la hora día D — después se edita en el panel (`/ajustes`) |
 | `LOSCO_SCHEDULER_ENABLED` | `false` | Prende el scheduler (mensajería) |
 | `LOSCO_IFRAME_KEY` | vacío | Clave de embed del iframe (vacía = iframe deshabilitado) |
 | `LOSCO_IFRAME_ORIGINS` | `*` | Orígenes con permiso de embeber (CSP frame-ancestors) |
