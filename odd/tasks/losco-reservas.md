@@ -26,7 +26,7 @@ Asumpciones del arquitecto (marcadas como tales):
 - **T3** — S1, S5 — inline — Auth: login JWT, usuarios por env, protección de rutas API + dashboard. Commit: 12949d2 — DONE (GREEN 27/27; login OAuth2 password flow, 401 en CRUD anónimo, /api/health público).
 - **T4** — S5, S7 — inline — Dashboard Jinja2+HTMX: lista con filtros, alta/edición/baja de reservas. Commit: 43da2aa — DONE (GREEN 39/39 + smoke test en vivo: login cookie, tabla, alta, render).
 - **T5** — S3, S8 — inline — Scheduler diario (jobs T-48h configurable y día D configurable) + mensajería multi-canal consciente de ventana 24hs (L7), cliente Chatwoot API con tests en mocks (token real: dependencia externa L6). Commit: cbecf50 — DONE (GREEN 54/54, fix nonlocal scheduler + smoke arranque/shutdown con scheduler activo).
-- **T6** — S4 — inline — Página iframe por teléfono: Dashboard App de Chatwoot (URL estática + evento appContext), endpoints /iframe/app, /iframe/reservas.json y /iframe/reservas con clave de embed fail-closed, guía docs/iframe-chatwoot.md. Commit: (ver docs commit) — DONE (RED 5 → GREEN 13/13 iframe, suite 67/67; smoke en vivo con LOSCO_IFRAME_KEY).
+- **T6** — S4 — inline — Página iframe por teléfono: Dashboard App de Chatwoot (URL estática + evento appContext), endpoints /iframe/app, /iframe/reservas.json y /iframe/reservas con clave de embed fail-closed, guía docs/iframe-chatwoot.md. Commit: fde35eb — DONE (RED 5 → GREEN 13/13 iframe, suite 67/67; smoke en vivo con LOSCO_IFRAME_KEY).
 - **T7** — S2, S9 — inline — Deploy en LoscoServer (compose al lado de Chatwoot, volumen SQLite, backup simple). Commit: (pendiente)
 - **T8** — S6 — inline — README + documentación OpenAPI para consumo futuro por IA. Commit: (pendiente)
 
