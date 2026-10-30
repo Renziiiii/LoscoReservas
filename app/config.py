@@ -20,6 +20,18 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-secret-change-me"
     jwt_expire_minutes: int = 480
 
+    # --- Chatwoot / mensajería (T5) ---
+    chatwoot_base_url: str = ""
+    chatwoot_api_token: str = ""
+    chatwoot_account_id: int = 0
+    template_confirmacion: str = "reserva_confirmacion"
+    template_invitados: str = "invitados_confirmacion"
+    # "HH:MM" — T-48h confirmations run in the morning; guest-count
+    # confirmations run inside Valen's 17:00-18:00 window.
+    hora_confirmacion: str = "09:00"
+    hora_invitados: str = "17:15"
+    scheduler_enabled: bool = False
+
     @property
     def user_map(self) -> dict[str, str]:
         pairs = {}

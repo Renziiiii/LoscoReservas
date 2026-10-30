@@ -18,11 +18,20 @@ from app.reservas import router as reservas_router
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     engine = make_engine(settings.database_path)
+    scheduler = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        nonlocal scheduler
         Base.metadata.create_all(engine)
+        if settings.scheduler_enabled:
+            from app.scheduler import build_scheduler
+
+            scheduler = build_scheduler(app, settings)
+            scheduler.start()
         yield
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
 
     app = FastAPI(
         title="LoscoReservas API",

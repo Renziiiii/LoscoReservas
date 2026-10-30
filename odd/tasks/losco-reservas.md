@@ -21,11 +21,11 @@ Asumpciones del arquitecto (marcadas como tales):
 
 ## Tasks
 
-- **T1** — S2, S7 — inline — Scaffold del proyecto: FastAPI + SQLite (WAL), schema de `reservas`, Dockerfile + compose, estructura de tests. Commit: (pendiente)
-- **T2** — S1, S6 — inline — CRUD REST de reservas con validación (Pydantic), tests RED→GREEN. Commit: (pendiente)
-- **T3** — S1, S5 — inline — Auth: login JWT, usuarios por env, protección de rutas API + dashboard. Commit: (pendiente)
-- **T4** — S5, S7 — inline — Dashboard Jinja2+HTMX: lista con filtros, alta/edición/baja de reservas. Commit: (pendiente)
-- **T5** — S3, S8 — inline — Scheduler diario (17:00) + jobs T-48h y día D 17-18h, cliente Chatwoot API con tests en mocks (token real: dependencia externa). Commit: (pendiente)
+- **T1** — S2, S7 — inline — Scaffold del proyecto: FastAPI + SQLite (WAL), schema de `reservas`, Dockerfile + compose, estructura de tests. Commit: 3da1ebc — DONE (GREEN 4/4, imagen Docker verificada en vivo).
+- **T2** — S1, S6 — inline — CRUD REST de reservas con validación (Pydantic), tests RED→GREEN. Commit: 211cdb8 — DONE (RED 13 fallos → GREEN 20/20).
+- **T3** — S1, S5 — inline — Auth: login JWT, usuarios por env, protección de rutas API + dashboard. Commit: 12949d2 — DONE (GREEN 27/27; login OAuth2 password flow, 401 en CRUD anónimo, /api/health público).
+- **T4** — S5, S7 — inline — Dashboard Jinja2+HTMX: lista con filtros, alta/edición/baja de reservas. Commit: 43da2aa — DONE (GREEN 39/39 + smoke test en vivo: login cookie, tabla, alta, render).
+- **T5** — S3, S8 — inline — Scheduler diario (jobs T-48h configurable y día D configurable) + mensajería multi-canal consciente de ventana 24hs (L7), cliente Chatwoot API con tests en mocks (token real: dependencia externa L6). Commit: (ver docs commit) — DONE (GREEN 54/54, fix nonlocal scheduler + smoke arranque/shutdown con scheduler activo).
 - **T6** — S4 — inline — Página iframe por teléfono (URL firmada) + guía de inserción en Chatwoot. Commit: (pendiente)
 - **T7** — S2, S9 — inline — Deploy en LoscoServer (compose al lado de Chatwoot, volumen SQLite, backup simple). Commit: (pendiente)
 - **T8** — S6 — inline — README + documentación OpenAPI para consumo futuro por IA. Commit: (pendiente)
@@ -38,3 +38,5 @@ Asumpciones del arquitecto (marcadas como tales):
 - **L4** (decisiones del usuario, 2ª ronda): dashboard **Jinja2 + HTMX** (un solo servicio, server-rendered); **sin migración del Google Sheet** — "No, de cero".
 - **L5** (evidencia de server, inspección SSH del 2026-02): LoscoServer = vpsar-2058113 (143.95.165.168), 1 núcleo, 1.9 GB RAM (≈690 MB disponibles), 49 GB disco (32 libres), 1.9 GB swap. Corriendo: chatwoot-rails, chatwoot-sidekiq, chatwoot-redis, chatwoot-postgres (pgvector pg16, imagen `chatwoot/chatwoot:aug2026-rollback`), `transcriptor`. Decisión: SQLite + un solo contenedor propio; no se toca el stack de Chatwoot.
 - **L6** (dependencias externas abiertas): token de API de Chatwoot (agente/admin) y account id — los pide el usuario a Valen; aprobación de plantillas UTILITY en Meta. No bloquean el desarrollo con mocks, sí la prueba real de mensajería.
+- **L7** (corrección del usuario, textual): "Una cosa, hay un tema... osea chatwoot esta conectado a Whatsapp, Instagram, Messenger, toma eso en cuenta para la mensajeria automatizada". Diseño derivado: mensajería consciente del canal — WhatsApp con ventana de 24hs vencida → plantilla UTILITY vía API de Chatwoot; cualquier canal dentro de la ventana → texto libre personalizado; IG/Messenger con ventana vencida o contacto sin conversación abierta → falla registrada (no se envía). La decisión de envío es por conversación, no global.
+- **L8** (evidencia API Chatwoot, research T5): envío de plantilla = POST /api/v1/accounts/{id}/conversations/{cid}/messages con template_params (name/category/processed_params, docs developers.chatwoot.com + discusión chatwoot #12330); fuera de ventana el texto libre es rechazado. Shape exacto del payload a verificar en vivo en T7 con el server real.

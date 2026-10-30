@@ -27,5 +27,7 @@ class Reserva(Base):
     estado: Mapped[str] = mapped_column(String(20), default="pendiente")
     detalles: Mapped[str | None] = mapped_column(Text, nullable=True)
     enviar_recordatorio: Mapped[bool] = mapped_column(Boolean, default=True)
+    confirmacion_enviada_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    invitados_enviada_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
