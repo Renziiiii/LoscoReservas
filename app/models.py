@@ -15,6 +15,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
+class Configuracion(Base):
+    """Single-row (id=1) runtime configuration edited in the admin panel
+    (L19): messaging hours and WhatsApp template names live here, not in
+    environment variables. Seeded from Settings defaults on first boot."""
+
+    __tablename__ = "configuracion"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    hora_confirmacion: Mapped[str] = mapped_column(String(5), default="09:00")
+    hora_invitados: Mapped[str] = mapped_column(String(5), default="17:15")
+    plantilla_confirmacion: Mapped[str] = mapped_column(String(120), default="reserva_confirmacion")
+    plantilla_invitados: Mapped[str] = mapped_column(String(120), default="invitados_confirmacion")
+
+
 class Reserva(Base):
     __tablename__ = "reservas"
 

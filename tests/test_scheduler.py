@@ -1,7 +1,5 @@
 """T5 scheduler wiring tests (S8): hour parsing and cron job configuration."""
 
-from unittest.mock import MagicMock
-
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -23,12 +21,24 @@ def test_parse_hora_rejects_garbage():
         raise AssertionError(f"parse_hora({bad!r}) should have raised")
 
 
-def test_build_scheduler_registers_two_jobs_with_configured_times():
-    settings = MagicMock()
-    settings.tz = "America/Argentina/Buenos_Aires"
-    settings.hora_confirmacion = "09:00"
-    settings.hora_invitados = "17:15"
-    scheduler = build_scheduler(MagicMock(), settings)
+def test_build_scheduler_registers_two_jobs_with_configured_times(tmp_path):
+    """Hours now come from the DB configuration (L19), seeded from env."""
+    from app.ajustes import obtener_configuracion
+    from app.models import Base
+
+    settings = Settings(
+        database_path=tmp_path / "reservas.db",
+        users="valen:testpass123",
+        jwt_secret="test-secret-0123456789abcdef0123456789abcdef",
+        hora_confirmacion="09:00",
+        hora_invitados="17:15",
+        _env_file=None,
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
+    with app.state.sessionmaker() as session:
+        obtener_configuracion(session, settings)
+    scheduler = build_scheduler(app, settings)
     jobs = {job.id: job for job in scheduler.get_jobs()}
     assert set(jobs) == {"confirmaciones_t48h", "recordatorio_invitados"}
     assert str(jobs["confirmaciones_t48h"].trigger) == "cron[hour='9', minute='0']"

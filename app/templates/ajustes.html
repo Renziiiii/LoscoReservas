@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Losco — Ajustes{% endblock %}
+{% block content %}
+<h1>Ajustes de mensajería</h1>
+<p class="muted">Horarios y plantillas de los mensajes automáticos. Se guardan en la base de
+datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el contenedor.</p>
+
+<form method="post" action="/ajustes" class="card">
+  <h2>Confirmación de reserva (T-48h)</h2>
+  <label>Hora de envío
+    <input type="time" name="hora_confirmacion" required
+      value="{{ values.hora_confirmacion if values.hora_confirmacion is defined else config.hora_confirmacion }}">
+    {% if errors.hora_confirmacion %}<span class="error">{{ errors.hora_confirmacion }}</span>{% endif %}
+  </label>
+  <label>Plantilla de WhatsApp
+    <input type="text" name="plantilla_confirmacion" required maxlength="120"
+      value="{{ values.plantilla_confirmacion if values.plantilla_confirmacion is defined else config.plantilla_confirmacion }}">
+    {% if errors.plantilla_confirmacion %}<span class="error">{{ errors.plantilla_confirmacion }}</span>{% endif %}
+  </label>
+
+  <h2>Confirmación de invitados (mismo día)</h2>
+  <label>Hora de envío
+    <input type="time" name="hora_invitados" required
+      value="{{ values.hora_invitados if values.hora_invitados is defined else config.hora_invitados }}">
+    {% if errors.hora_invitados %}<span class="error">{{ errors.hora_invitados }}</span>{% endif %}
+  </label>
+  <label>Plantilla de WhatsApp
+    <input type="text" name="plantilla_invitados" required maxlength="120"
+      value="{{ values.plantilla_invitados if values.plantilla_invitados is defined else config.plantilla_invitados }}">
+    {% if errors.plantilla_invitados %}<span class="error">{{ errors.plantilla_invitados }}</span>{% endif %}
+  </label>
+
+  <button class="btn primary" type="submit">Guardar ajustes</button>
+</form>
+{% endblock %}

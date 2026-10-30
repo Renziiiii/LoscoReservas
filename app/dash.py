@@ -20,9 +20,11 @@ from app.auth import (
     get_current_user as _api_current_user,
     oauth2_scheme,
 )
+from app.ajustes import obtener_configuracion
 from app.db import get_session
 from app.models import Reserva
 from app.schemas import ReservaCreate
+from app.scheduler import parse_hora, reprogramar
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -165,6 +167,67 @@ def actualizar_reserva(
         setattr(reserva, field, value)
     session.commit()
     return RedirectResponse("/", status_code=303)
+
+
+# --- ajustes de mensajería (L19: horas y plantillas en el panel, no env) ---
+
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+
+
+def _render_ajustes(request: Request, config, errors: dict | None = None, values: dict | None = None):
+    return templates.TemplateResponse(
+        request,
+        "ajustes.html",
+        {"config": config, "errors": errors or {}, "values": values or {}},
+    )
+
+
+@router.get("/ajustes")
+def ajustes_page(request: Request, session: Session = Depends(get_session)):
+    config = obtener_configuracion(session, request.app.state.settings)
+    return _render_ajustes(request, config)
+
+
+@router.post("/ajustes")
+def ajustes_submit(
+    request: Request,
+    hora_confirmacion: str | None = Form(None),
+    hora_invitados: str | None = Form(None),
+    plantilla_confirmacion: str | None = Form(None),
+    plantilla_invitados: str | None = Form(None),
+    session: Session = Depends(get_session),
+):
+    settings = request.app.state.settings
+    values = {
+        "hora_confirmacion": (hora_confirmacion or "").strip(),
+        "hora_invitados": (hora_invitados or "").strip(),
+        "plantilla_confirmacion": (plantilla_confirmacion or "").strip(),
+        "plantilla_invitados": (plantilla_invitados or "").strip(),
+    }
+    errors: dict[str, str] = {}
+    for campo in ("hora_confirmacion", "hora_invitados"):
+        try:
+            parse_hora(values[campo])
+        except ValueError:
+            errors[campo] = "Hora mal formada: usá HH:MM (ej. 09:00)."
+    for campo in ("plantilla_confirmacion", "plantilla_invitados"):
+        if not values[campo]:
+            errors[campo] = "El nombre de la plantilla es obligatorio."
+    if errors:
+        config = obtener_configuracion(session, settings)
+        return _render_ajustes(request, config, errors=errors, values=values)
+
+    config = obtener_configuracion(session, settings)
+    config.hora_confirmacion = values["hora_confirmacion"]
+    config.hora_invitados = values["hora_invitados"]
+    config.plantilla_confirmacion = values["plantilla_confirmacion"]
+    config.plantilla_invitados = values["plantilla_invitados"]
+    session.commit()
+
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        reprogramar(scheduler, request.app.state, settings)
+    return RedirectResponse("/ajustes", status_code=303)
 
 
 @router.post("/reservas/{reserva_id}/eliminar")

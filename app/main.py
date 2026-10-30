@@ -29,10 +29,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from app.scheduler import build_scheduler
 
             scheduler = build_scheduler(app, settings)
+            app.state.scheduler = scheduler
             scheduler.start()
         yield
         if scheduler is not None:
             scheduler.shutdown(wait=False)
+            app.state.scheduler = None
 
     app = FastAPI(
         title="LoscoReservas API",
@@ -42,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.sessionmaker = sessionmaker(engine)
     app.state.settings = settings
+    app.state.scheduler = None  # set by lifespan; dash reschedules it on /ajustes saves
     app.include_router(auth_router)
     app.include_router(dash_public_router)
     app.include_router(dash_router)
