@@ -23,6 +23,7 @@ from app.auth import (
 )
 from app.ajustes import obtener_configuracion
 from app.chatwoot import ChatwootClient
+from app.config import Settings
 from app.db import get_session
 from app.etiquetas import etiquetar_confirmada, migrar_etiqueta
 from app.models import Reserva
@@ -221,27 +222,6 @@ def _chatwoot_configurado(settings: Settings) -> bool:
         settings.chatwoot_base_url
         and settings.chatwoot_api_token
         and settings.chatwoot_account_id
-    )
-
-
-@router.get("/ajustes")
-def ajustes_page(
-    request: Request,
-    migrados: int | None = None,
-    fallas: int | None = None,
-    session: Session = Depends(get_session),
-):
-    config = obtener_configuracion(session, request.app.state.settings)
-    return templates.TemplateResponse(
-        request,
-        "ajustes.html",
-        {
-            "config": config,
-            "errors": {},
-            "values": {},
-            "migrados": migrados,
-            "fallas": fallas,
-        },
     )
 
 
