@@ -23,6 +23,7 @@ from app.auth import (
 from app.ajustes import obtener_configuracion
 from app.chatwoot import ChatwootClient
 from app.db import get_session
+from app.etiquetas import etiquetar_confirmada
 from app.models import Reserva
 from app.schemas import ReservaCreate
 from app.scheduler import parse_hora, reprogramar
@@ -146,8 +147,11 @@ def crear_reserva(request: Request, form: dict = Depends(_form_dict), session: S
     payload, errors, values = _parse_form(form)
     if payload is None:
         return _render_form(request, reserva=None, errors=errors, values=values)
-    session.add(Reserva(**payload.model_dump()))
+    reserva = Reserva(**payload.model_dump())
+    session.add(reserva)
     session.commit()
+    session.refresh(reserva)
+    etiquetar_confirmada(request.app.state.settings, reserva)
     return RedirectResponse("/", status_code=303)
 
 
@@ -167,6 +171,7 @@ def actualizar_reserva(
     for field, value in payload.model_dump().items():
         setattr(reserva, field, value)
     session.commit()
+    etiquetar_confirmada(request.app.state.settings, reserva)
     return RedirectResponse("/", status_code=303)
 
 

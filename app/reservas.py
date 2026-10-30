@@ -1,10 +1,11 @@
 """CRUD REST endpoints for reservas (S1: "CRUD con API")."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
+from app.etiquetas import etiquetar_confirmada
 from app.models import Reserva
 from app.schemas import ReservaOut, ReservaCreate, ReservaUpdate
 
@@ -19,12 +20,15 @@ def _get_or_404(reserva_id: int, session: Session) -> Reserva:
 
 
 @router.post("", response_model=ReservaOut, status_code=201, summary="Registrar una reserva")
-def create_reserva(payload: ReservaCreate, session: Session = Depends(get_session)):
+def create_reserva(
+    request: Request, payload: ReservaCreate, session: Session = Depends(get_session)
+):
     """Crea una reserva nueva. El teléfono se normaliza a dígitos con '+' inicial."""
     reserva = Reserva(**payload.model_dump())
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
+    etiquetar_confirmada(request.app.state.settings, reserva)
     return reserva
 
 
@@ -55,7 +59,10 @@ def get_reserva(reserva_id: int, session: Session = Depends(get_session)):
 
 @router.patch("/{reserva_id}", response_model=ReservaOut, summary="Actualizar campos de una reserva")
 def update_reserva(
-    reserva_id: int, payload: ReservaUpdate, session: Session = Depends(get_session)
+    reserva_id: int,
+    payload: ReservaUpdate,
+    request: Request,
+    session: Session = Depends(get_session),
 ):
     reserva = _get_or_404(reserva_id, session)
     changes = payload.model_dump(exclude_unset=True)
@@ -63,6 +70,7 @@ def update_reserva(
         setattr(reserva, field, value)
     session.commit()
     session.refresh(reserva)
+    etiquetar_confirmada(request.app.state.settings, reserva)
     return reserva
 
 

@@ -121,6 +121,23 @@ class ChatwootClient:
         """Only WhatsApp supports approved templates."""
         return "Whatsapp" in self._canal(conversacion)
 
+    # --- contact labels (T14/S10) ---
+
+    def listar_labels_contacto(self, contacto_id: int) -> list[str]:
+        """Labels currently on a contact. NOTE: the POST endpoint OVERWRITES
+        the whole list, so callers must merge with this before assigning."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/labels")
+        return list(data.get("payload") or [])
+
+    def agregar_labels_contacto(self, contacto_id: int, labels: list[str]) -> list[str]:
+        """Set the contact's full label list (Chatwoot semantics: replace)."""
+        response = self._http.post(
+            f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/labels",
+            json={"labels": labels},
+        )
+        response.raise_for_status()
+        return list(response.json().get("payload") or [])
+
     # --- sending ---
 
     def enviar_mensaje(
