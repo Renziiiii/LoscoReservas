@@ -22,8 +22,7 @@ h1 { font-size: 1.4rem; }
   background: var(--panel); border-bottom: 1px solid var(--border);
   padding: 10px clamp(12px, 4vw, 48px);
 }
-.brand { font-weight: 300; letter-spacing: .5px; }
-.brand b { color: var(--accent); }
+.brand { font-weight: 300; letter-spacing: .5px; text-decoration: none; color: inherit; }
 .spacer { flex: 1; }
 
 .btn {

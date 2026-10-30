@@ -116,3 +116,11 @@ def test_delete_htmx_returns_empty_fragment(browser, client):
     assert response.status_code == 200
     assert response.text.strip() == ""
     assert client.get("/api/reservas/1").status_code == 404
+
+
+def test_brand_logo_links_back_home(browser):
+    """L23: the brand is a link to / so every page (e.g. /ajustes) can
+    navigate back, and it just reads 'Losco'."""
+    response = browser.get("/")
+    assert response.status_code == 200
+    assert '<a class="brand" href="/">Losco</a>' in response.text
