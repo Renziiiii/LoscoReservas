@@ -39,6 +39,12 @@ LOSCO_JWT_SECRET=<openssl rand -hex 32>
 LOSCO_TZ=America/Argentina/Buenos_Aires
 ```
 
+> ⚠️ **No pegues acá el `env.example` completo.** Ese archivo es para correr
+> local sin Docker y su línea `LOSCO_DATABASE_PATH=data/reservas.db` (path
+> relativo) **pisa** la del Dockerfile (`/data/reservas.db`) y rompe el
+> arranque con `PermissionError: [Errno 13] Permission denied: 'data'`.
+> Dejá esa variable afuera: el contenedor ya apunta la base a `/data`.
+
 Opcional para probar el iframe en Chatwoot (ver `docs/iframe-chatwoot.md`):
 
 ```
