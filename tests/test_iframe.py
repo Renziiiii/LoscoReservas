@@ -453,3 +453,76 @@ def test_iframe_app_page_has_edit_delete_and_dark_theme(tmp_path):
         assert "data-delete=" in text
         assert 'id="f-submit-edit"' in text
         assert "#111113" in text
+
+
+# --- T10 fixes: estado editable + bug de shadowing + delegación de eventos ---
+
+
+def test_iframe_create_and_patch_allow_estado_change(tmp_path):
+    """The tab must let the agent change pendiente/confirmada/cancelada."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        created = client.post(
+            "/iframe/reservas.json", params={"key": EMBED_KEY}, json=_payload()
+        )
+        assert created.status_code == 201
+        assert created.json()["estado"] == "pendiente"
+
+        rid = created.json()["id"]
+        patched = client.patch(
+            f"/iframe/reservas/{rid}.json",
+            params={"key": EMBED_KEY},
+            json={"estado": "confirmada"},
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["estado"] == "confirmada"
+
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json()[0]["estado"] == "confirmada"
+
+        # creating directly with an estado also works (full CRUD parity)
+        otra = client.post(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+            json=_payload(fecha="2026-12-31", estado="cancelada"),
+        )
+        assert otra.status_code == 201
+        assert otra.json()["estado"] == "cancelada"
+
+
+def test_iframe_form_has_estado_select(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        assert 'name="estado"' in response.text
+        for estado in ("pendiente", "confirmada", "cancelada"):
+            assert f'value="{estado}"' in response.text
+
+
+def test_iframe_submit_handler_has_no_ok_shadowing(tmp_path):
+    """Pins the L17 bug: destructuring {ok, status, data} shadowed the DOM
+    element and crashed ok.style after a successful save."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        assert "respOk" in response.text
+        assert "{ ok, status, data }" not in response.text
+
+
+def test_iframe_row_actions_only_on_buttons(tmp_path):
+    """Pins the delegation bug: <tr> carried data-edit/data-delete so the
+    delete button opened edit mode and any cell click triggered edit."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        # delegation targets buttons only
+        assert "button[data-edit], button[data-delete]" in response.text
+        # row keeps a numeric id hook and the JSON payload, but no action attrs
+        assert '<tr data-id="${r.id}"' in response.text
+        assert 'data-reserva="${esc(JSON.stringify(r))}"' in response.text
+        assert '<tr data-id="${r.id}" data-edit' not in response.text

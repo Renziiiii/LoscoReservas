@@ -32,6 +32,8 @@
     .wrap { padding: 12px; }
     h2 { font-size: 15px; margin: 0 0 8px; color: var(--text); }
     .espera, .vacia { color: var(--muted); font-size: 13px; }
+    .hint { color: var(--warn); font-size: 12px; margin: 8px 0 0; }
+    form.editando { border-color: var(--accent); }
     table {
       border-collapse: collapse;
       width: 100%;
@@ -65,7 +67,7 @@
       margin-bottom: 12px;
     }
     label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 3px; }
-    input {
+    input, select {
       width: 100%;
       padding: 6px 8px;
       font-size: 13px;
@@ -74,7 +76,7 @@
       border: 1px solid var(--border-strong);
       border-radius: 4px;
     }
-    input:focus { outline: none; border-color: var(--accent); }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
     .fila { display: flex; gap: 8px; }
     .fila > div { flex: 1; }
     button, .btn {
@@ -144,9 +146,18 @@
           <label for="f-personas">Personas</label>
           <input id="f-personas" name="personas" type="number" min="1" max="200" value="2" required>
         </div>
+        <div>
+          <label for="f-estado">Estado</label>
+          <select id="f-estado" name="estado">
+            <option value="pendiente">pendiente</option>
+            <option value="confirmada">confirmada</option>
+            <option value="cancelada">cancelada</option>
+          </select>
+        </div>
       </div>
       <label for="f-detalles">Detalles</label>
       <input id="f-detalles" name="detalles" maxlength="2000" placeholder="Mesa adentro, cumpleaños…">
+      <p class="hint" id="edit-hint" style="display:none">✏️ Estás editando una reserva existente — al guardar se reemplazan sus datos</p>
       <button type="submit" id="f-submit">Registrar reserva</button>
       <button type="submit" id="f-submit-edit" style="display:none">Guardar cambios</button>
       <a href="javascript:void(0)" id="f-cancel" class="btn btn-cancel" style="display:none">Cancelar</a>
@@ -199,27 +210,34 @@
     function modoCrear() {
       const form = document.getElementById("form-reserva");
       form.reset();
+      form.classList.remove("editando");
       document.getElementById("f-nombre").value = contactName;
       document.getElementById("f-telefono").value = contactPhone;
       document.getElementById("f-personas").value = "2";
+      document.getElementById("f-estado").value = "pendiente";
       document.getElementById("f-submit").style.display = "block";
       document.getElementById("f-submit-edit").style.display = "none";
       document.getElementById("f-cancel").style.display = "none";
+      document.getElementById("edit-hint").style.display = "none";
       document.getElementById("form-ok").style.display = "none";
       document.getElementById("form-err").style.display = "none";
       editingId = null;
     }
 
     function modoEditar(reserva) {
+      const form = document.getElementById("form-reserva");
+      form.classList.add("editando");
       document.getElementById("f-nombre").value = reserva.nombre;
       document.getElementById("f-telefono").value = reserva.telefono;
       document.getElementById("f-fecha").value = reserva.fecha;
       document.getElementById("f-hora").value = reserva.hora;
       document.getElementById("f-personas").value = String(reserva.personas);
+      document.getElementById("f-estado").value = reserva.estado;
       document.getElementById("f-detalles").value = reserva.detalles || "";
       document.getElementById("f-submit").style.display = "none";
       document.getElementById("f-submit-edit").style.display = "block";
       document.getElementById("f-cancel").style.display = "inline-block";
+      document.getElementById("edit-hint").style.display = "block";
       document.getElementById("form-ok").style.display = "none";
       document.getElementById("form-err").style.display = "none";
       editingId = reserva.id;
@@ -254,7 +272,7 @@
       }
       estado.textContent = "";
       const filas = reservas.map((r) => `
-        <tr data-reserva="${esc(JSON.stringify(r))}" data-edit="${r.id}" data-delete="${r.id}">
+        <tr data-id="${r.id}" data-reserva="${esc(JSON.stringify(r))}">
           <td>${fechaAr(r.fecha)}</td>
           <td>${r.hora}</td>
           <td>${r.personas}</td>
@@ -273,16 +291,17 @@
     }
 
     document.getElementById("contenido").addEventListener("click", (e) => {
-      const editId = e.target.closest("[data-edit]")?.dataset.edit;
-      const deleteId = e.target.closest("[data-delete]")?.dataset.delete;
-      if (!editId && !deleteId) return;
+      // Only the row action buttons trigger edit/delete — clicking a cell
+      // (or anything else) must do nothing.
+      const btn = e.target.closest("button[data-edit], button[data-delete]");
+      if (!btn) return;
       e.preventDefault();
-      const id = parseInt(editId || deleteId, 10);
-      if (deleteId && !editId) {
-        eliminarReserva(id);
+      if (btn.dataset.delete) {
+        eliminarReserva(parseInt(btn.dataset.delete, 10));
         return;
       }
-      const fila = document.querySelector(`tr[data-edit="${id}"]`);
+      const id = parseInt(btn.dataset.edit, 10);
+      const fila = document.querySelector(`tr[data-id="${id}"]`);
       if (!fila) return;
       const reserva = JSON.parse(fila.dataset.reserva);
       modoEditar(reserva);
@@ -290,7 +309,7 @@
     });
 
     function eliminarReserva(id) {
-      const fila = document.querySelector(`tr[data-delete="${id}"]`);
+      const fila = document.querySelector(`tr[data-id="${id}"]`);
       const fecha = fila ? fila.getElementsByTagName("td")[0].textContent.trim() : "";
       if (!window.confirm("¿Eliminar la reserva del " + fecha + "?")) return;
       fetch("/iframe/reservas/" + id + ".json?key=" + encodeURIComponent(key), {
@@ -310,10 +329,10 @@
 
     document.getElementById("form-reserva").addEventListener("submit", (e) => {
       e.preventDefault();
-      const ok = document.getElementById("form-ok");
-      const err = document.getElementById("form-err");
-      ok.style.display = "none";
-      err.style.display = "none";
+      const elOk = document.getElementById("form-ok");
+      const elErr = document.getElementById("form-err");
+      elOk.style.display = "none";
+      elErr.style.display = "none";
       const boton = editingId
         ? document.getElementById("f-submit-edit")
         : document.getElementById("f-submit");
@@ -325,6 +344,7 @@
         fecha: document.getElementById("f-fecha").value,
         hora: document.getElementById("f-hora").value,
         personas: parseInt(document.getElementById("f-personas").value, 10),
+        estado: document.getElementById("f-estado").value,
         detalles: document.getElementById("f-detalles").value.trim() || null,
       };
 
@@ -339,25 +359,26 @@
         body: JSON.stringify(body),
       })
         .then((r) => r.json().then((data) => ({ ok: r.ok, status: r.status, data })))
-        .then(({ ok, status, data }) => {
-          if (!ok) {
+        .then(({ ok: respOk, status, data }) => {
+          if (!respOk) {
             const detalle = Array.isArray(data.detail)
               ? data.detail.map((d) => (d.msg || "") + (d.loc ? " (" + d.loc.join(".") + ")" : "")).join("; ")
               : (data.detail || "error " + status);
             throw new Error(detalle);
           }
-          ok.textContent = editingId
+          const msg = editingId
             ? "Cambios guardados para " + fechaAr(data.fecha) + " " + data.hora + "."
             : "Reserva registrada para " + fechaAr(data.fecha) + " " + data.hora + ".";
-          ok.style.display = "block";
           modoCrear();
           cargarReservas();
+          elOk.textContent = msg;
+          elOk.style.display = "block";
         })
         .catch((e) => {
-          err.textContent = editingId
+          elErr.textContent = editingId
             ? "No se pudieron guardar los cambios: " + e.message
             : "No se pudo registrar: " + e.message;
-          err.style.display = "block";
+          elErr.style.display = "block";
         })
         .finally(() => { boton.disabled = false; });
     });
