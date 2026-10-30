@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Losco — Reservas del contacto</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f7f7f8; color: #222; }
+    .wrap { padding: 12px; }
+    h2 { font-size: 15px; margin: 0 0 8px; color: #444; }
+    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #e2e2e4; border-radius: 6px; }
+    th, td { text-align: left; padding: 6px 8px; font-size: 13px; border-bottom: 1px solid #eee; }
+    th { color: #777; font-weight: 600; background: #fafafa; }
+    .estado { padding: 1px 6px; border-radius: 999px; font-size: 12px; }
+    .estado.pendiente { background: #fff3cd; }
+    .estado.confirmada { background: #d4edda; }
+    .estado.cancelada { background: #f8d7da; text-decoration: line-through; }
+    .vacia { color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Reservas</h2>
+    {% if reservas %}
+    <table>
+      <tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Estado</th><th>Detalles</th></tr>
+      {% for r in reservas %}
+      <tr>
+        <td>{{ r.fecha.strftime("%d/%m/%Y") }}</td>
+        <td>{{ r.hora.strftime("%H:%M") }}</td>
+        <td>{{ r.personas }}</td>
+        <td><span class="estado {{ r.estado }}">{{ r.estado }}</span></td>
+        <td>{{ r.detalles or "" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="vacia">Sin reservas para este contacto.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

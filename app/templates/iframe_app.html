@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Losco — Reservas del contacto</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f7f7f8; color: #222; }
+    .wrap { padding: 12px; }
+    h2 { font-size: 15px; margin: 0 0 8px; color: #444; }
+    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #e2e2e4; border-radius: 6px; }
+    th, td { text-align: left; padding: 6px 8px; font-size: 13px; border-bottom: 1px solid #eee; }
+    th { color: #777; font-weight: 600; background: #fafafa; }
+    .estado { padding: 1px 6px; border-radius: 999px; font-size: 12px; }
+    .estado.pendiente { background: #fff3cd; }
+    .estado.confirmada { background: #d4edda; }
+    .estado.cancelada { background: #f8d7da; text-decoration: line-through; }
+    .vacia, .espera { color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Reservas</h2>
+    <p class="espera" id="estado">Esperando contexto de Chatwoot…</p>
+    <div id="contenido"></div>
+  </div>
+  <script>
+    // Chatwoot Dashboard Apps deliver the conversation/contact context as a
+    // window message with event "appContext" (see docs/iframe-chatwoot.md).
+    // The embed key travels in THIS page's URL and is reused for the data
+    // fetch; it never needs to be hardcoded in the source.
+    const key = new URLSearchParams(window.location.search).get("key") || "";
+
+    window.addEventListener("message", (event) => {
+      const data = event.data;
+      if (!data || data.event !== "appContext" || !data.data) return;
+      const contact = data.data.contact || {};
+      const tel = contact.phone_number || contact.phone || "";
+      if (!tel) {
+        document.getElementById("estado").textContent =
+          "El contacto no tiene teléfono cargado en Chatwoot.";
+        return;
+      }
+      document.getElementById("estado").textContent = "Cargando reservas…";
+      fetch("/iframe/reservas.json?tel=" + encodeURIComponent(tel) + "&key=" + encodeURIComponent(key))
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then((reservas) => {
+          const estado = document.getElementById("estado");
+          const contenido = document.getElementById("contenido");
+          if (!reservas.length) {
+            estado.textContent = "Sin reservas para este contacto.";
+            return;
+          }
+          estado.textContent = "";
+          const filas = reservas.map((r) => `
+            <tr>
+              <td>${fechaAr(r.fecha)}</td>
+              <td>${r.hora}</td>
+              <td>${r.personas}</td>
+              <td><span class="estado ${esc(r.estado)}">${esc(r.estado)}</span></td>
+              <td>${esc(r.detalles || "")}</td>
+            </tr>`).join("");
+          contenido.innerHTML = `
+            <table>
+              <tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Estado</th><th>Detalles</th></tr>
+              ${filas}
+            </table>`;
+        })
+        .catch(() => {
+          document.getElementById("estado").textContent =
+            "No se pudieron cargar las reservas.";
+        });
+    });
+
+    // --- helpers ---
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+    }
+    function fechaAr(iso) {
+      const [y, m, d] = iso.split("-");
+      return `${d}/${m}/${y}`;
+    }
+  </script>
+</body>
+</html>

@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     hora_invitados: str = "17:15"
     scheduler_enabled: bool = False
 
+    # --- Iframe embebible en Chatwoot (T6, S4) ---
+    # Shared secret in the iframe URL (the iframe cannot do cookie login).
+    # Empty key => iframe always 403 (fail closed).
+    iframe_key: str = ""
+    # Comma-separated origins allowed to embed the iframe via CSP
+    # frame-ancestors (e.g. "https://chat.losco.com"). "*" allows any —
+    # acceptable because the key protects the data, but restrict it in
+    # production.
+    iframe_origins: str = "*"
+
     @property
     def user_map(self) -> dict[str, str]:
         pairs = {}
