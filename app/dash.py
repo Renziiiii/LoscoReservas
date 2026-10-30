@@ -189,7 +189,8 @@ def _render_ajustes(
     config,
     errors: dict | None = None,
     values: dict | None = None,
-    migrados: int | None = None,
+    migrados_contactos: int | None = None,
+    migrados_conv: int | None = None,
     fallas: int | None = None,
 ):
     return templates.TemplateResponse(
@@ -199,7 +200,8 @@ def _render_ajustes(
             "config": config,
             "errors": errors or {},
             "values": values or {},
-            "migrados": migrados,
+            "migrados_contactos": migrados_contactos,
+            "migrados_conv": migrados_conv,
             "fallas": fallas,
         },
     )
@@ -208,12 +210,19 @@ def _render_ajustes(
 @router.get("/ajustes")
 def ajustes_page(
     request: Request,
-    migrados: int | None = None,
+    migrados_contactos: int | None = None,
+    migrados_conv: int | None = None,
     fallas: int | None = None,
     session: Session = Depends(get_session),
 ):
     config = obtener_configuracion(session, request.app.state.settings)
-    return _render_ajustes(request, config, migrados=migrados, fallas=fallas)
+    return _render_ajustes(
+        request,
+        config,
+        migrados_contactos=migrados_contactos,
+        migrados_conv=migrados_conv,
+        fallas=fallas,
+    )
 
 
 def _chatwoot_configurado(settings: Settings) -> bool:
@@ -279,14 +288,20 @@ def ajustes_submit(
                 settings.chatwoot_api_token,
                 settings.chatwoot_account_id,
             )
-            total = len(chatwoot.contactos_con_etiqueta(vieja))
+            total_contactos = len(chatwoot.contactos_con_etiqueta(vieja))
+            total_conversaciones = len(chatwoot.conversaciones_con_etiqueta(vieja))
         except Exception:
             return RedirectResponse("/ajustes", status_code=303)
-        if total > 0:
+        if total_contactos + total_conversaciones > 0:
             return templates.TemplateResponse(
                 request,
                 "migrar_etiqueta.html",
-                {"vieja": vieja, "nueva": nueva, "total": total},
+                {
+                    "vieja": vieja,
+                    "nueva": nueva,
+                    "total_contactos": total_contactos,
+                    "total_conversaciones": total_conversaciones,
+                },
             )
 
     return RedirectResponse("/ajustes", status_code=303)
@@ -305,7 +320,9 @@ def migrar_etiqueta_submit(
 
     resultado = migrar_etiqueta(request.app.state.settings, vieja, nueva)
     return RedirectResponse(
-        f"/ajustes?migrados={len(resultado['migrados'])}&fallas={len(resultado['fallas'])}",
+        f"/ajustes?migrados_contactos={len(resultado['migrados_contactos'])}"
+        f"&migrados_conv={len(resultado['migrados_conversaciones'])}"
+        f"&fallas={len(resultado['fallas'])}",
         status_code=303,
     )
 

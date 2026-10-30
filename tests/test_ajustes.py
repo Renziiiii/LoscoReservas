@@ -617,11 +617,15 @@ def test_contactos_con_etiqueta_verifica_lado_cliente():
 class ChatwootMigrarFake:
     """MockTransport-backed Chatwoot for migrar_etiqueta unit tests."""
 
-    def __init__(self, contactos=None):
+    def __init__(self, contactos=None, conversaciones=None):
         self.requests = []
         self.contactos = contactos or []
+        self.conversaciones = conversaciones or []
         self.labels_por_contacto = {
             c["id"]: list(c.get("labels", [])) for c in self.contactos
+        }
+        self.labels_por_conversacion = {
+            c["id"]: list(c.get("labels", [])) for c in self.conversaciones
         }
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -634,6 +638,14 @@ class ChatwootMigrarFake:
                     c for c in self.contactos if titulo in (c.get("labels") or [])
                 ]
                 return httpx.Response(200, json={"payload": coinciden})
+            if path.endswith("/conversations") and request.method == "GET":
+                label = request.url.params.get("labels[]")
+                if label is None:
+                    return httpx.Response(200, json={"payload": []})
+                coinciden = [
+                    c for c in self.conversaciones if label in (c.get("labels") or [])
+                ]
+                return httpx.Response(200, json={"payload": coinciden})
             if "/contacts/" in path and "/labels" in path and request.method == "GET":
                 contacto_id = int(path.split("/contacts/")[1].split("/")[0])
                 return httpx.Response(
@@ -643,6 +655,16 @@ class ChatwootMigrarFake:
                 contacto_id = int(path.split("/contacts/")[1].split("/")[0])
                 labels = json.loads(request.content)["labels"]
                 self.labels_por_contacto[contacto_id] = labels
+                return httpx.Response(200, json={"payload": labels})
+            if "/conversations/" in path and "/labels" in path and request.method == "GET":
+                conv_id = int(path.split("/conversations/")[1].split("/")[0])
+                return httpx.Response(
+                    200, json={"payload": self.labels_por_conversacion.get(conv_id, [])}
+                )
+            if "/conversations/" in path and "/labels" in path and request.method == "POST":
+                conv_id = int(path.split("/conversations/")[1].split("/")[0])
+                labels = json.loads(request.content)["labels"]
+                self.labels_por_conversacion[conv_id] = labels
                 return httpx.Response(200, json={"payload": labels})
             return httpx.Response(404, json={})
 
@@ -674,8 +696,10 @@ def test_migrar_etiqueta_intercambia_preservando_resto(tmp_path):
     resultado = migrar_etiqueta(
         _migrar_settings(tmp_path), "vieja", "nueva", transport=fake.transport
     )
-    assert resultado["total"] == 2
-    assert sorted(resultado["migrados"]) == [1, 2]
+    assert resultado["total_contactos"] == 2
+    assert sorted(resultado["migrados_contactos"]) == [1, 2]
+    assert resultado["total_conversaciones"] == 0
+    assert resultado["migrados_conversaciones"] == []
     assert resultado["fallas"] == []
     assert fake.labels_por_contacto[1] == ["vip", "nueva"]
     assert fake.labels_por_contacto[2] == ["nueva"]
@@ -708,13 +732,88 @@ def test_migrar_etiqueta_registra_falla_sin_abortar(tmp_path):
     resultado = migrar_etiqueta(
         _migrar_settings(tmp_path), "vieja", "nueva", transport=transport
     )
-    assert resultado["total"] == 2
-    assert resultado["migrados"] == [1]
+    assert resultado["total_contactos"] == 2
+    assert resultado["migrados_contactos"] == [1]
+    assert resultado["total_conversaciones"] == 0
+    assert resultado["migrados_conversaciones"] == []
     assert len(resultado["fallas"]) == 1
-    assert resultado["fallas"][0]["contacto_id"] == 2
+    assert resultado["fallas"][0]["tipo"] == "contacto"
+    assert resultado["fallas"][0]["id"] == 2
 
 
-def _fake_chatwoot_con_contactos(monkeypatch, contactos):
+def test_migrar_etiqueta_intercambia_conversaciones_preservando_resto(tmp_path):
+    fake = ChatwootMigrarFake(
+        conversaciones=[
+            {"id": 10, "labels": ["vieja", "pendiente"]},
+            {"id": 11, "labels": ["vieja"]},
+        ]
+    )
+    resultado = migrar_etiqueta(
+        _migrar_settings(tmp_path), "vieja", "nueva", transport=fake.transport
+    )
+    assert resultado["total_contactos"] == 0
+    assert resultado["migrados_contactos"] == []
+    assert resultado["total_conversaciones"] == 2
+    assert sorted(resultado["migrados_conversaciones"]) == [10, 11]
+    assert resultado["fallas"] == []
+    assert fake.labels_por_conversacion[10] == ["pendiente", "nueva"]
+    assert fake.labels_por_conversacion[11] == ["nueva"]
+
+
+def test_migrar_etiqueta_no_duplica_nueva_en_conversacion(tmp_path):
+    fake = ChatwootMigrarFake(conversaciones=[{"id": 10, "labels": ["vieja", "nueva"]}])
+    migrar_etiqueta(_migrar_settings(tmp_path), "vieja", "nueva", transport=fake.transport)
+    assert fake.labels_por_conversacion[10] == ["nueva"]
+
+
+def test_migrar_etiqueta_registra_falla_en_conversacion_sin_abortar(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/conversations") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "payload": [
+                        {"id": 20, "labels": ["vieja"]},
+                        {"id": 21, "labels": ["vieja"]},
+                    ]
+                },
+            )
+        if "/conversations/20/labels" in request.url.path and request.method == "GET":
+            return httpx.Response(200, json={"payload": ["vieja"]})
+        if "/conversations/20/labels" in request.url.path and request.method == "POST":
+            return httpx.Response(200, json={"payload": ["nueva"]})
+        # conversation 21 fails
+        return httpx.Response(500, json={})
+
+    transport = httpx.MockTransport(handler)
+    resultado = migrar_etiqueta(
+        _migrar_settings(tmp_path), "vieja", "nueva", transport=transport
+    )
+    assert resultado["total_contactos"] == 0
+    assert resultado["migrados_contactos"] == []
+    assert resultado["total_conversaciones"] == 2
+    assert resultado["migrados_conversaciones"] == [20]
+    assert len(resultado["fallas"]) == 1
+    assert resultado["fallas"][0]["tipo"] == "conversacion"
+    assert resultado["fallas"][0]["id"] == 21
+
+
+def test_migrar_etiqueta_mezcla_contactos_y_conversaciones(tmp_path):
+    fake = ChatwootMigrarFake(
+        contactos=[{"id": 1, "labels": ["vieja"]}],
+        conversaciones=[{"id": 10, "labels": ["vieja"]}],
+    )
+    resultado = migrar_etiqueta(
+        _migrar_settings(tmp_path), "vieja", "nueva", transport=fake.transport
+    )
+    assert resultado["total_contactos"] == 1
+    assert resultado["migrados_contactos"] == [1]
+    assert resultado["total_conversaciones"] == 1
+    assert resultado["migrados_conversaciones"] == [10]
+    assert resultado["fallas"] == []
+
+
+def _fake_chatwoot_con_contactos(monkeypatch, contactos, conversaciones=None):
     captured = {}
 
     class FakeChatwootClient:
@@ -724,6 +823,9 @@ def _fake_chatwoot_con_contactos(monkeypatch, contactos):
         def contactos_con_etiqueta(self, titulo):
             return contactos
 
+        def conversaciones_con_etiqueta(self, titulo):
+            return conversaciones or []
+
     monkeypatch.setattr("app.dash.ChatwootClient", FakeChatwootClient)
     return captured
 
@@ -732,6 +834,11 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
     _fake_chatwoot_con_contactos(
         monkeypatch,
         [{"id": 1, "labels": ["Reserva confirmada"]}, {"id": 2, "labels": ["Reserva confirmada"]}],
+        conversaciones=[
+            {"id": 10, "labels": ["Reserva confirmada"]},
+            {"id": 11, "labels": ["Reserva confirmada"]},
+            {"id": 12, "labels": ["Reserva confirmada"]},
+        ],
     )
     app = create_app(
         _settings(
@@ -750,7 +857,8 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
         )
         assert response.status_code == 200
         text = response.text
-        assert "2" in text
+        assert "2 contactos" in text
+        assert "3 conversaciones" in text
         assert "Reserva confirmada" in text
         assert "Confirmada nueva" in text
         assert "migrar-etiqueta" in text
@@ -796,7 +904,13 @@ def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
 
     def fake_migrar(settings, vieja, nueva):
         calls.append((vieja, nueva))
-        return {"migrados": [1, 2], "fallas": []}
+        return {
+            "total_contactos": 2,
+            "migrados_contactos": [1, 2],
+            "total_conversaciones": 3,
+            "migrados_conversaciones": [10, 11, 12],
+            "fallas": [],
+        }
 
     monkeypatch.setattr("app.dash.migrar_etiqueta", fake_migrar)
     app = create_app(_settings(tmp_path))
@@ -808,14 +922,21 @@ def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes?migrados=2&fallas=0"
+        assert response.headers["location"] == "/ajustes?migrados_contactos=2&migrados_conv=3&fallas=0"
         assert calls == [("Reserva confirmada", "Confirmada nueva")]
 
 
 def test_get_ajustes_muestra_banner_de_migracion(client):
-    response = client.get("/ajustes?migrados=2")
+    response = client.get("/ajustes?migrados_contactos=2&migrados_conv=3&fallas=0")
     assert response.status_code == 200
-    assert "Migración lista: 2 contactos actualizados" in response.text
+    assert "Migración lista: 2 contactos y 3 conversaciones actualizados" in response.text
+
+
+def test_get_ajustes_muestra_fallas_en_banner(client):
+    response = client.get("/ajustes?migrados_contactos=2&migrados_conv=3&fallas=1")
+    assert response.status_code == 200
+    assert "Migración lista: 2 contactos y 3 conversaciones actualizados" in response.text
+    assert "1 fallas" in response.text
 
 
 def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeypatch):

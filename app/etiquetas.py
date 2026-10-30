@@ -12,7 +12,7 @@ error, the reservation save must never fail — the incident is only logged.
 
 import logging
 
-from app.chatwoot import ChatwootClient
+from app.chatwoot import ChatwootClient, NoHayConversacion
 from app.config import Settings
 from app.models import Reserva
 
@@ -31,9 +31,13 @@ def etiquetar_confirmada(
     settings: Settings, reserva: Reserva, etiqueta: str, transport=None
 ) -> bool:
     """Add the configured confirmed-reservation label to the reserva's
-    contact in Chatwoot. Returns True when the label ended up on the contact;
-    False otherwise (not confirmada / unconfigured / API failure). Never
-    raises.
+    contact AND its open conversation in Chatwoot (S10/L27). Returns True
+    when the label ended up on the contact or the conversation; False
+    otherwise (not confirmada / unconfigured / no contact / both failed).
+    Never raises.
+
+    Contact and conversation labeling are independent: a failure in one
+    must not undo or prevent the other.
 
     `transport` is an httpx transport override for tests."""
     if reserva.estado != "confirmada":
@@ -59,11 +63,35 @@ def etiquetar_confirmada(
                 reserva.id,
             )
             return False
-        actuales = chatwoot.listar_labels_contacto(contacto["id"])
-        if etiqueta in actuales:
-            return True  # idempotent: already labeled
-        chatwoot.agregar_labels_contacto(contacto["id"], actuales + [etiqueta])
-        return True
+
+        contact_success = False
+        try:
+            actuales = chatwoot.listar_labels_contacto(contacto["id"])
+            if etiqueta not in actuales:
+                chatwoot.agregar_labels_contacto(contacto["id"], actuales + [etiqueta])
+            contact_success = True
+        except Exception as exc:
+            logger.warning(
+                "etiquetar contacto falló para la reserva %s: %s", reserva.id, exc
+            )
+
+        try:
+            conv = chatwoot.conversacion_abierta(reserva.telefono)
+            current = chatwoot.listar_labels_conversacion(conv["id"])
+            if etiqueta not in current:
+                chatwoot.agregar_labels_conversacion(conv["id"], current + [etiqueta])
+            return True
+        except NoHayConversacion:
+            logger.info(
+                "sin conversación abierta para %s: no se etiquetó la conversación",
+                reserva.telefono,
+            )
+        except Exception as exc:
+            logger.warning(
+                "etiquetar conversación falló para la reserva %s: %s", reserva.id, exc
+            )
+
+        return contact_success
     except Exception as exc:  # transport/HTTP errors must not break the save
         logger.warning("etiquetar en Chatwoot falló para la reserva %s: %s", reserva.id, exc)
         return False
@@ -72,18 +100,37 @@ def etiquetar_confirmada(
 def migrar_etiqueta(
     settings: Settings, vieja: str, nueva: str, transport=None
 ) -> dict:
-    """Swap `vieja` for `nueva` on every contact that has `vieja`, keeping
-    all other labels. Returns {"total": N, "migrados": [contact_ids],
-    "fallas": [{"contacto_id": ..., "motivo": ...}]}.
+    """Swap `vieja` for `nueva` on every contact AND conversation that has
+    `vieja`, keeping all other labels.
 
-    Never raises: per-contact HTTP failures are recorded in `fallas` and the
+    Returns {
+        "total_contactos": N,
+        "migrados_contactos": [contact_ids],
+        "total_conversaciones": M,
+        "migrados_conversaciones": [conversation_ids],
+        "fallas": [{"tipo": "contacto"|"conversacion", "id": ..., "motivo": ...}]
+    }.
+
+    Never raises: per-item HTTP failures are recorded in `fallas` and the
     migration continues; global failures return an empty result set.
     """
     if not vieja or not nueva:
-        return {"total": 0, "migrados": [], "fallas": []}
+        return {
+            "total_contactos": 0,
+            "migrados_contactos": [],
+            "total_conversaciones": 0,
+            "migrados_conversaciones": [],
+            "fallas": [],
+        }
     if not _configurado(settings):
         logger.info("Chatwoot sin configurar: no se migró etiqueta %s -> %s", vieja, nueva)
-        return {"total": 0, "migrados": [], "fallas": []}
+        return {
+            "total_contactos": 0,
+            "migrados_contactos": [],
+            "total_conversaciones": 0,
+            "migrados_conversaciones": [],
+            "fallas": [],
+        }
 
     try:
         chatwoot = ChatwootClient(
@@ -95,10 +142,12 @@ def migrar_etiqueta(
         contactos = chatwoot.contactos_con_etiqueta(vieja)
     except Exception as exc:
         logger.warning("listar contactos con etiqueta %s falló: %s", vieja, exc)
-        return {"total": 0, "migrados": [], "fallas": []}
+        contactos = []
 
-    migrados: list[int] = []
+    migrados_contactos: list[int] = []
+    migrados_conversaciones: list[int] = []
     fallas: list[dict] = []
+
     for contacto in contactos:
         contacto_id = contacto.get("id")
         try:
@@ -107,7 +156,7 @@ def migrar_etiqueta(
             if nueva not in nuevas:
                 nuevas.append(nueva)
             chatwoot.agregar_labels_contacto(contacto_id, nuevas)
-            migrados.append(contacto_id)
+            migrados_contactos.append(contacto_id)
         except Exception as exc:
             logger.warning(
                 "migrar etiqueta para contacto %s falló (%s -> %s): %s",
@@ -116,6 +165,37 @@ def migrar_etiqueta(
                 nueva,
                 exc,
             )
-            fallas.append({"contacto_id": contacto_id, "motivo": str(exc)})
+            fallas.append({"tipo": "contacto", "id": contacto_id, "motivo": str(exc)})
 
-    return {"total": len(contactos), "migrados": migrados, "fallas": fallas}
+    try:
+        conversaciones = chatwoot.conversaciones_con_etiqueta(vieja)
+    except Exception as exc:
+        logger.warning("listar conversaciones con etiqueta %s falló: %s", vieja, exc)
+        conversaciones = []
+
+    for conv in conversaciones:
+        conv_id = conv.get("id")
+        try:
+            actuales = chatwoot.listar_labels_conversacion(conv_id)
+            nuevas = [label for label in actuales if label != vieja]
+            if nueva not in nuevas:
+                nuevas.append(nueva)
+            chatwoot.agregar_labels_conversacion(conv_id, nuevas)
+            migrados_conversaciones.append(conv_id)
+        except Exception as exc:
+            logger.warning(
+                "migrar etiqueta para conversación %s falló (%s -> %s): %s",
+                conv_id,
+                vieja,
+                nueva,
+                exc,
+            )
+            fallas.append({"tipo": "conversacion", "id": conv_id, "motivo": str(exc)})
+
+    return {
+        "total_contactos": len(contactos),
+        "migrados_contactos": migrados_contactos,
+        "total_conversaciones": len(conversaciones),
+        "migrados_conversaciones": migrados_conversaciones,
+        "fallas": fallas,
+    }

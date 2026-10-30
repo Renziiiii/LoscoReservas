@@ -185,6 +185,55 @@ class ChatwootClient:
         response.raise_for_status()
         return list(response.json().get("payload") or [])
 
+    # --- conversation labels (T16/S10/L27) ---
+
+    def listar_labels_conversacion(self, conversation_id: int) -> list[str]:
+        """Labels currently on a conversation. Like contacts, the POST
+        endpoint OVERWRITES the whole list, so callers must merge first."""
+        data = self._get(
+            f"/api/v1/accounts/{self._account_id}/conversations/{conversation_id}/labels"
+        )
+        return list(data.get("payload") or [])
+
+    def agregar_labels_conversacion(self, conversation_id: int, labels: list[str]) -> list[str]:
+        """Set the conversation's full label list (Chatwoot semantics: replace)."""
+        response = self._http.post(
+            f"/api/v1/accounts/{self._account_id}/conversations/{conversation_id}/labels",
+            json={"labels": labels},
+        )
+        response.raise_for_status()
+        return list(response.json().get("payload") or [])
+
+    def conversaciones_con_etiqueta(self, titulo: str) -> list[dict]:
+        """Open-ish conversations that currently have the account label `titulo`.
+
+        Uses the conversations index with a labels[] filter. The exact filter
+        semantics are unverified live (see L20/L22), so every returned
+        conversation is re-verified client-side against its own `labels` list.
+        Pages while a page returns a non-empty payload, up to a 50-page safety cap.
+        """
+        conversaciones: list[dict] = []
+        seen: set[int] = set()
+        page = 1
+        path = f"/api/v1/accounts/{self._account_id}/conversations"
+        while page <= 50:
+            data = self._get(
+                path,
+                params={"status": "all", "labels[]": titulo, "page": page},
+            )
+            payload = list(data.get("payload") or [])
+            if not payload:
+                break
+            for c in payload:
+                cid = c.get("id")
+                if cid is None or cid in seen:
+                    continue
+                seen.add(cid)
+                if titulo in (c.get("labels") or []):
+                    conversaciones.append(c)
+            page += 1
+        return conversaciones
+
     # --- sending ---
 
     def enviar_mensaje(

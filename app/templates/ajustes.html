@@ -5,10 +5,10 @@
 <p class="muted">Horarios, plantillas y etiqueta de los mensajes automáticos. Se guardan en la base de
 datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el contenedor.</p>
 
-{% if migrados is not none %}
+{% if migrados_contactos is not none and migrados_conv is not none %}
 <div class="banner success">
-  Migración lista: {{ migrados }} contactos actualizados
-  {% if fallas is not none and fallas > 0 %}({{ fallas }} contactos fallaron){% endif %}.
+  Migración lista: {{ migrados_contactos }} contactos y {{ migrados_conv }} conversaciones actualizados
+  {% if fallas is not none and fallas > 0 %}({{ fallas }} fallas){% endif %}.
 </div>
 {% endif %}
 

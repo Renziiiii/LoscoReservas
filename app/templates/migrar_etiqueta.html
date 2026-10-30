@@ -2,7 +2,7 @@
 {% block title %}Losco — Migrar etiqueta{% endblock %}
 {% block content %}
 <h1>Migrar etiqueta de reserva confirmada</h1>
-<p>Hay <strong>{{ total }}</strong> contactos con la etiqueta <strong>{{ vieja }}</strong>.</p>
+<p>Hay {{ total_contactos }} contactos y {{ total_conversaciones }} conversaciones con la etiqueta <strong>{{ vieja }}</strong>.</p>
 <p>¿Querés reemplazarla por <strong>{{ nueva }}</strong>?</p>
 
 <form method="post" action="/ajustes/migrar-etiqueta" class="card">

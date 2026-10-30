@@ -22,10 +22,11 @@ iframe de reservas por contacto dentro de Chatwoot.
   por el negocio (se registra la falla). Cada reserva puede excluirse de
   los recordatorios (checkbox "Enviar recordatorios", default sí).
 - **Etiqueta "Reserva confirmada" en Chatwoot**: al confirmar una reserva
-  (dashboard, iframe o API) el contacto recibe la etiqueta configurada en
-  Ajustes (selector con las etiquetas de la cuenta de Chatwoot) con
-  migración opcional al cambiarla (fail-soft: sin token configurado el guardado
-  no falla).
+  (dashboard, iframe o API) el contacto y su conversación abierta reciben la
+  etiqueta configurada en Ajustes, para que aparezca en Contactos > Etiquetado
+  con… y en Conversaciones > Etiquetas (selector con las etiquetas de la cuenta
+  de Chatwoot). Migración opcional de contactos y conversaciones al cambiarla
+  (fail-soft: sin token configurado el guardado no falla).
 - **Iframe en Chatwoot** con las reservas del contacto de la conversación
   (mecanismo Dashboard Apps) — ver `docs/iframe-chatwoot.md`.
 
