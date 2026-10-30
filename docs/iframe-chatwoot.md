@@ -51,6 +51,13 @@ producción).
 
 ## Notas
 
+- **El payload llega como string JSON** (verificado en vivo, 2026-10): Chatwoot
+  hace `postMessage` del appContext serializado; nuestra página lo parsea con
+  `JSON.parse` y acepta también objeto. Además envía
+  `chatwoot-dashboard-app:fetch-info` al cargar para pedir el contexto bajo
+  demanda (mecanismo documentado) — cubre el caso en que Chatwoot manda el
+  contexto antes de que el listener esté attachado.
+
 - El match del teléfono es **por dígitos**: Chatwoot manda E.164
   (`+54911…`) y nuestras reservas guardan el formato original — ambos
   coinciden.
