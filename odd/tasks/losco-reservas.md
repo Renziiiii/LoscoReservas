@@ -28,7 +28,7 @@ Asumpciones del arquitecto (marcadas como tales):
 - **T5** — S3, S8 — inline — Scheduler diario (jobs T-48h configurable y día D configurable) + mensajería multi-canal consciente de ventana 24hs (L7), cliente Chatwoot API con tests en mocks (token real: dependencia externa L6). Commit: cbecf50 — DONE (GREEN 54/54, fix nonlocal scheduler + smoke arranque/shutdown con scheduler activo).
 - **T6** — S4 — inline — Página iframe por teléfono: Dashboard App de Chatwoot (URL estática + evento appContext), endpoints /iframe/app, /iframe/reservas.json y /iframe/reservas con clave de embed fail-closed, guía docs/iframe-chatwoot.md. Commit: fde35eb — DONE (RED 5 → GREEN 13/13 iframe, suite 67/67; smoke en vivo con LOSCO_IFRAME_KEY).
 - **T7** — S2, S9 — inline — Deploy en LoscoServer (compose al lado de Chatwoot, volumen SQLite, backup simple) + verificación en vivo de template_params (L8) y appContext (L9). **BLOQUEADO por L11**: el usuario quiere probar la app en un servidor de pruebas antes de tocar LoscoServer. Exploración de solo-lectura ya hecha: nginx proxy (chatwoot.loscobar.com.ar → 127.0.0.1:3000, certbot SSL), red docker `chatwoot_default`, compose en /root/chatwoot, 717 MB RAM libres, 32 GB disco. Commit: (pendiente)
-- **T8** — S6 — inline — README + documentación OpenAPI para consumo futuro por IA. Commit: (pendiente)
+- **T8** — S6 — inline — README completo (guía de prueba en servidor con Docker, auth, tabla de env vars, sección API-first) + env.example + summaries OpenAPI en español. Commit: b93e371 — DONE (GREEN 67/67; OpenAPI verificada con summaries en todos los endpoints).
 
 ## Log
 
