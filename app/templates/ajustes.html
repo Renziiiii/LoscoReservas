@@ -2,10 +2,26 @@
 {% block title %}Losco — Ajustes{% endblock %}
 {% block content %}
 <h1>Ajustes de mensajería</h1>
-<p class="muted">Horarios y plantillas de los mensajes automáticos. Se guardan en la base de
+<p class="muted">Horarios, plantillas y etiqueta de los mensajes automáticos. Se guardan en la base de
 datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el contenedor.</p>
 
+{% if migrados is not none %}
+<div class="banner success">
+  Migración lista: {{ migrados }} contactos actualizados
+  {% if fallas is not none and fallas > 0 %}({{ fallas }} contactos fallaron){% endif %}.
+</div>
+{% endif %}
+
 <form method="post" action="/ajustes" class="card">
+  <h2>Etiqueta de reserva confirmada</h2>
+  <label>Etiqueta de Chatwoot
+    <select id="sel-etiqueta-confirmada" style="display:none"></select>
+    <input type="text" name="etiqueta_confirmada" id="in-etiqueta-confirmada" required maxlength="120"
+      value="{{ values.etiqueta_confirmada if values.etiqueta_confirmada is defined else config.etiqueta_confirmada }}">
+    {% if errors.etiqueta_confirmada %}<span class="error">{{ errors.etiqueta_confirmada }}</span>{% endif %}
+  </label>
+  <p id="etiquetas-estado" class="muted">Cargando etiquetas de Chatwoot…</p>
+
   <h2>Confirmación de reserva (T-48h)</h2>
   <label>Hora de envío
     <input type="time" name="hora_confirmacion" required
@@ -34,22 +50,24 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
 
   <p id="plantillas-estado" class="muted">Cargando plantillas de Chatwoot…</p>
   <script>
-    function activarSelector(selectId, inputId, plantillas) {
+    function activarSelector(selectId, inputId, items, opciones) {
       var select = document.getElementById(selectId);
       var input = document.getElementById(inputId);
       select.innerHTML = "";
       var actual = input.value;
-      var nombres = plantillas.map(function (p) { return p.name; });
-      if (actual && nombres.indexOf(actual) === -1) {
+      var valorFn = opciones.valor || function (i) { return i.name || i.title; };
+      var etiquetaFn = opciones.etiqueta || valorFn;
+      var valores = items.map(valorFn);
+      if (actual && valores.indexOf(actual) === -1) {
         var optActual = document.createElement("option");
         optActual.value = actual;
         optActual.textContent = actual + " (valor actual, no está en Chatwoot)";
         select.appendChild(optActual);
       }
-      plantillas.forEach(function (p) {
+      items.forEach(function (i) {
         var opt = document.createElement("option");
-        opt.value = p.name;
-        opt.textContent = p.name + " — " + [p.status, p.category, p.language].filter(Boolean).join(" · ");
+        opt.value = valorFn(i);
+        opt.textContent = etiquetaFn(i);
         select.appendChild(opt);
       });
       if (actual) { select.value = actual; }
@@ -67,13 +85,42 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
           estado.textContent = data.motivo;
         } else {
           estado.textContent = data.plantillas.length + ' plantillas de WhatsApp cargadas desde Chatwoot.';
-          activarSelector('sel-plantilla-conf', 'in-plantilla-conf', data.plantillas);
-          activarSelector('sel-plantilla-inv', 'in-plantilla-inv', data.plantillas);
+          activarSelector('sel-plantilla-conf', 'in-plantilla-conf', data.plantillas, {
+            valor: function (p) { return p.name; },
+            etiqueta: function (p) {
+              return p.name + ' — ' + [p.status, p.category, p.language].filter(Boolean).join(' · ');
+            }
+          });
+          activarSelector('sel-plantilla-inv', 'in-plantilla-inv', data.plantillas, {
+            valor: function (p) { return p.name; },
+            etiqueta: function (p) {
+              return p.name + ' — ' + [p.status, p.category, p.language].filter(Boolean).join(' · ');
+            }
+          });
         }
       })
       .catch(function () {
         document.getElementById('plantillas-estado').textContent =
           'No se pudieron cargar las plantillas: escribí el nombre a mano.';
+      });
+
+    fetch('/ajustes/etiquetas.json')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var estado = document.getElementById('etiquetas-estado');
+        if (data.motivo) {
+          estado.textContent = data.motivo;
+        } else {
+          estado.textContent = data.etiquetas.length + ' etiquetas cargadas desde Chatwoot.';
+          activarSelector('sel-etiqueta-confirmada', 'in-etiqueta-confirmada', data.etiquetas, {
+            valor: function (e) { return e.title; },
+            etiqueta: function (e) { return e.title + (e.color ? ' (' + e.color + ')' : ''); }
+          });
+        }
+      })
+      .catch(function () {
+        document.getElementById('etiquetas-estado').textContent =
+          'No se pudieron cargar las etiquetas: escribí el nombre a mano.';
       });
   </script>
 

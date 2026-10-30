@@ -30,6 +30,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ajustes import obtener_configuracion
 from app.config import Settings
 from app.db import get_session
 from app.etiquetas import etiquetar_confirmada
@@ -116,7 +117,8 @@ def iframe_reservas_create(
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
-    etiquetar_confirmada(settings, reserva)
+    config = obtener_configuracion(session, settings)
+    etiquetar_confirmada(settings, reserva, config.etiqueta_confirmada)
     return JSONResponse(_serialize(reserva), status_code=201, headers=headers)
 
 
@@ -140,7 +142,8 @@ def iframe_reservas_patch(
         setattr(reserva, field, value)
     session.commit()
     session.refresh(reserva)
-    etiquetar_confirmada(settings, reserva)
+    config = obtener_configuracion(session, settings)
+    etiquetar_confirmada(settings, reserva, config.etiqueta_confirmada)
     return JSONResponse(_serialize(reserva), status_code=200, headers=headers)
 
 

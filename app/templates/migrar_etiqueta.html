@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Losco — Migrar etiqueta{% endblock %}
+{% block content %}
+<h1>Migrar etiqueta de reserva confirmada</h1>
+<p>Hay <strong>{{ total }}</strong> contactos con la etiqueta <strong>{{ vieja }}</strong>.</p>
+<p>¿Querés reemplazarla por <strong>{{ nueva }}</strong>?</p>
+
+<form method="post" action="/ajustes/migrar-etiqueta" class="card">
+  <input type="hidden" name="vieja" value="{{ vieja }}">
+  <input type="hidden" name="nueva" value="{{ nueva }}">
+  <button class="btn primary" type="submit">Sí, migrar</button>
+  <a class="btn" href="/ajustes">Dejarlos como están</a>
+</form>
+{% endblock %}

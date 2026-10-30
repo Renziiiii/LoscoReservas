@@ -27,6 +27,7 @@ class Configuracion(Base):
     hora_invitados: Mapped[str] = mapped_column(String(5), default="17:15")
     plantilla_confirmacion: Mapped[str] = mapped_column(String(120), default="reserva_confirmacion")
     plantilla_invitados: Mapped[str] = mapped_column(String(120), default="invitados_confirmacion")
+    etiqueta_confirmada: Mapped[str] = mapped_column(String(120), default="Reserva confirmada")
 
 
 class Reserva(Base):

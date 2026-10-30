@@ -1,18 +1,21 @@
-"""T14 tests (S10/L21): reservas confirmadas get the "Reserva confirmada"
-label on their Chatwoot contact. Fail-soft: without a Chatwoot token (L6) or
-on any API error, saving the reservation must still succeed."""
+"""T14 tests (S10/L21): reservas confirmadas get the configured
+confirmed-reservation label on their Chatwoot contact. Fail-soft: without a
+Chatwoot token (L6) or on any API error, saving the reservation must still
+succeed."""
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.etiquetas import ETIQUETA_CONFIRMADA, etiquetar_confirmada
+from app.ajustes import obtener_configuracion
+from app.etiquetas import etiquetar_confirmada
 from app.main import create_app
-from app.models import Reserva
+from app.models import Configuracion, Reserva
 
 TEST_USERS = "valen:testpass123"
 SECRET = "test-secret-0123456789abcdef0123456789abcdef"
+DEFAULT_ETIQUETA = "Reserva confirmada"
 
 
 def _settings(tmp_path, **overrides) -> Settings:
@@ -96,44 +99,57 @@ def _chatwoot_settings(tmp_path):
 
 def test_no_etiqueta_si_estado_no_es_confirmada(tmp_path):
     fake = ChatwootLabelsFake(contact=CONTACT)
-    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(estado="pendiente")) is False
+    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(estado="pendiente"), DEFAULT_ETIQUETA) is False
     assert fake.requests == []
 
 
 def test_no_etiqueta_si_chatwoot_no_configurado(tmp_path):
     """L6: without a token nothing explodes and nothing is sent."""
-    assert etiquetar_confirmada(_settings(tmp_path), _reserva()) is False
+    assert etiquetar_confirmada(_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA) is False
 
 
 def test_etiqueta_merges_con_labels_existentes(tmp_path):
     """The API overwrites the list, so existing labels must be preserved."""
     fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip", "cumple"])
-    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), transport=fake.transport)
+    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport)
     assert ok is True
     posts = [r for r in fake.requests if r[0] == "POST"]
     assert len(posts) == 1
     import json
 
     body = json.loads(posts[0][2])
-    assert body["labels"] == ["vip", "cumple", ETIQUETA_CONFIRMADA]
+    assert body["labels"] == ["vip", "cumple", DEFAULT_ETIQUETA]
+
+
+def test_etiqueta_personalizada_merges_con_labels_existentes(tmp_path):
+    """L24: the label name comes from configuration, not a hard-coded constant."""
+    etiqueta = "Mesa VIP"
+    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip"])
+    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), etiqueta, transport=fake.transport)
+    assert ok is True
+    posts = [r for r in fake.requests if r[0] == "POST"]
+    assert len(posts) == 1
+    import json
+
+    assert etiqueta in json.loads(posts[0][2])["labels"]
 
 
 def test_etiqueta_no_re_postea_si_ya_la_tiene(tmp_path):
-    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip", ETIQUETA_CONFIRMADA])
-    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), transport=fake.transport)
+    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip", DEFAULT_ETIQUETA])
+    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport)
     assert ok is True
     assert not [r for r in fake.requests if r[0] == "POST"]
 
 
 def test_etiqueta_sin_contacto_en_chatwoot_es_fail_soft(tmp_path):
     fake = ChatwootLabelsFake(contact=None)
-    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), transport=fake.transport) is False
+    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport) is False
     assert not [r for r in fake.requests if r[0] == "POST"]
 
 
 def test_etiqueta_error_http_es_fail_soft(tmp_path):
     fake = ChatwootLabelsFake(contact=CONTACT, post_fails=True)
-    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), transport=fake.transport) is False
+    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport) is False
 
 
 # --- integration: every write path triggers it ---
@@ -150,8 +166,8 @@ def etiqueta_spy(monkeypatch):
     """Replaces the labeling service with a spy recording calls per module."""
     calls = []
 
-    def spy(settings, reserva):
-        calls.append((reserva.telefono, reserva.estado))
+    def spy(settings, reserva, etiqueta):
+        calls.append((reserva.telefono, reserva.estado, etiqueta))
         return True
 
     for target in ("app.dash", "app.iframe", "app.reservas"):
@@ -193,13 +209,13 @@ def test_dashboard_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
         assert created.status_code == 303
         # the hook fires on every save; the estado filter lives inside the
         # service (pinned by the unit tests above)
-        assert etiqueta_spy == [("+5491111111111", "pendiente")]
+        assert etiqueta_spy == [("+5491111111111", "pendiente", DEFAULT_ETIQUETA)]
 
         response = client.post(
             "/reservas/1", data=dict(BASE_PAYLOAD, estado="confirmada"), follow_redirects=False
         )
         assert response.status_code == 303
-        assert etiqueta_spy[-1] == ("+5491111111111", "confirmada")
+        assert etiqueta_spy[-1] == ("+5491111111111", "confirmada", DEFAULT_ETIQUETA)
 
 
 def test_iframe_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
@@ -211,7 +227,7 @@ def test_iframe_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
             json=dict(BASE_PAYLOAD, estado="confirmada"),
         )
         assert created.status_code == 201, created.text
-        assert etiqueta_spy == [("+5491111111111", "confirmada")]
+        assert etiqueta_spy == [("+5491111111111", "confirmada", DEFAULT_ETIQUETA)]
 
 
 def test_api_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
@@ -220,9 +236,24 @@ def test_api_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
         _login(client)
         created = client.post("/api/reservas", json=dict(BASE_PAYLOAD, estado="confirmada"))
         assert created.status_code == 201, created.text
-        assert etiqueta_spy == [("+5491111111111", "confirmada")]
+        assert etiqueta_spy == [("+5491111111111", "confirmada", DEFAULT_ETIQUETA)]
 
         etiqueta_spy.clear()
         patched = client.patch("/api/reservas/1", json={"estado": "pendiente"})
         assert patched.status_code == 200
-        assert etiqueta_spy[-1] == ("+5491111111111", "pendiente")  # service filters
+        assert etiqueta_spy[-1] == ("+5491111111111", "pendiente", DEFAULT_ETIQUETA)  # service filters
+
+
+def test_api_usa_etiqueta_configurada_en_db(tmp_path, etiqueta_spy):
+    """L24: write paths must read the label from DB configuration."""
+    etiqueta_custom = "Confirmada Losco"
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        with client.app.state.sessionmaker() as session:
+            config = obtener_configuracion(session, app.state.settings)
+            config.etiqueta_confirmada = etiqueta_custom
+            session.commit()
+        _login(client)
+        created = client.post("/api/reservas", json=dict(BASE_PAYLOAD, estado="confirmada"))
+        assert created.status_code == 201, created.text
+        assert etiqueta_spy == [("+5491111111111", "confirmada", etiqueta_custom)]

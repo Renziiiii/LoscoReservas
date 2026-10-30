@@ -58,6 +58,48 @@ class ChatwootClient:
         data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/conversations")
         return data.get("payload") or []
 
+    def listar_labels_cuenta(self) -> list[dict]:
+        """All labels defined at account level (L24: selector in /ajustes).
+        Returned shape: {id, title, description?, color}."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/labels")
+        return list(data.get("payload") or [])
+
+    def contactos_con_etiqueta(self, titulo: str) -> list[dict]:
+        """Contacts that currently have the account label `titulo`.
+
+        Uses the contacts filter endpoint. The exact filter semantics are
+        unverified live (see L20/L22), so every returned contact is
+        re-verified client-side against its own `labels` list.
+        Pages through 15-contact pages up to a 50-page safety cap.
+        """
+        contactos: list[dict] = []
+        page = 1
+        path = f"/api/v1/accounts/{self._account_id}/contacts/filter"
+        while page <= 50:
+            response = self._http.post(
+                path,
+                params={"page": page},
+                json={
+                    "payload": [
+                        {
+                            "attribute_key": "labels",
+                            "filter_operator": "equal_to",
+                            "values": [titulo],
+                        }
+                    ]
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            payload = list(data.get("payload") or [])
+            contactos.extend(
+                [c for c in payload if titulo in (c.get("labels") or [])]
+            )
+            if len(payload) < 15:
+                break
+            page += 1
+        return contactos
+
     def listar_inboxes(self) -> list[dict]:
         """All inboxes of the account (used to auto-detect the WhatsApp one)."""
         data = self._get(f"/api/v1/accounts/{self._account_id}/inboxes")

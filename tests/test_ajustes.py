@@ -5,12 +5,14 @@ Covers: seeding from env defaults on first boot, the /ajustes page (auth,
 valid save, invalid hour rejected without persisting), and the scheduler
 reading/re-programming jobs from the DB configuration."""
 
+import json
 from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.etiquetas import migrar_etiqueta
 from app.main import create_app
 from app.models import Base, Configuracion, Reserva
 from app.scheduler import build_scheduler, reprogramar
@@ -44,6 +46,7 @@ FORM_DATA = {
     "hora_invitados": "18:45",
     "plantilla_confirmacion": "conf_losco",
     "plantilla_invitados": "invitados_losco",
+    "etiqueta_confirmada": "Reserva confirmada",
 }
 
 
@@ -416,3 +419,421 @@ def test_chatwoot_client_envia_ambos_headers_de_auth():
     ).listar_inboxes()
     assert seen["headers"]["api_access_token"] == "token-x"
     assert seen["headers"]["authorization"] == "Bearer token-x"
+
+
+# --- T15 (parte A): etiqueta de reserva confirmada configurable (L24) ---
+
+from sqlalchemy import text
+
+
+def test_ajustes_page_contiene_selector_de_etiqueta(client):
+    response = client.get("/ajustes")
+    assert response.status_code == 200
+    for marker in ('id="sel-etiqueta-confirmada"', 'name="etiqueta_confirmada"'):
+        assert marker in response.text, marker
+
+
+def test_ajustes_muestra_etiqueta_por_defecto(client):
+    response = client.get("/ajustes")
+    assert "Reserva confirmada" in response.text
+
+
+def test_post_ajustes_guarda_etiqueta(client):
+    data = dict(FORM_DATA, etiqueta_confirmada="Mesa ya confirmada")
+    response = client.post("/ajustes", data=data, follow_redirects=False)
+    assert response.status_code == 303
+    with client.app.state.sessionmaker() as session:
+        config = session.get(Configuracion, 1)
+        assert config.etiqueta_confirmada == "Mesa ya confirmada"
+
+
+def test_post_ajustes_etiqueta_vacia_rechazada(client):
+    client.get("/ajustes")
+    data = dict(FORM_DATA, etiqueta_confirmada="")
+    response = client.post("/ajustes", data=data)
+    assert response.status_code == 200
+    with client.app.state.sessionmaker() as session:
+        config = session.get(Configuracion, 1)
+        assert config.etiqueta_confirmada == "Reserva confirmada"
+
+
+def test_columna_etiqueta_migrada_en_db_con_esquema_viejo(tmp_path):
+    """Pins the deployed-server scenario: a DB created before T15 has a
+    configuracion table WITHOUT the new column; the app must boot and work
+    (SQLite create_all does not ALTER existing tables)."""
+    db_path = tmp_path / "reservas.db"
+    engine = create_app(_settings(tmp_path)).state.engine  # engine factory only
+    from app.db import Base
+    from app.models import Reserva  # register all models
+
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE configuracion ("
+            "id INTEGER PRIMARY KEY, hora_confirmacion VARCHAR(5), "
+            "hora_invitados VARCHAR(5), plantilla_confirmacion VARCHAR(120), "
+            "plantilla_invitados VARCHAR(120))"
+        ))
+        conn.execute(text(
+            "INSERT INTO configuracion (id, hora_confirmacion, hora_invitados, "
+            "plantilla_confirmacion, plantilla_invitados) "
+            "VALUES (1, '09:00', '17:15', 'reserva_confirmacion', 'invitados_confirmacion')"
+        ))
+    Base.metadata.create_all(engine)  # no-op for existing tables
+
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.get("/ajustes")
+        assert response.status_code == 200
+        assert "Reserva confirmada" in response.text  # default after migration
+
+
+def _fake_dash_chatwoot(monkeypatch, labels=None, error=None):
+    captured = {}
+
+    class FakeChatwootClient:
+        def __init__(self, base_url, api_token, account_id):
+            captured["creds"] = (base_url, api_token, account_id)
+
+        def listar_labels_cuenta(self):
+            if error is not None:
+                raise error
+            return labels if labels is not None else [
+                {"id": 1, "title": "Reserva confirmada", "color": "#12a594"},
+                {"id": 2, "title": "VIP", "color": "#ffc53d"},
+            ]
+
+    monkeypatch.setattr("app.dash.ChatwootClient", FakeChatwootClient)
+    return captured
+
+
+def test_etiquetas_json_anonimo_redirige(anon_client):
+    response = anon_client.get("/ajustes/etiquetas.json", follow_redirects=False)
+    assert response.status_code == 303
+
+
+def test_etiquetas_json_sin_chatwoot_configurado(client):
+    body = client.get("/ajustes/etiquetas.json").json()
+    assert body["etiquetas"] == []
+    assert "no está configurado" in body["motivo"]
+
+
+def test_etiquetas_json_devuelve_labels_de_la_cuenta(tmp_path, monkeypatch):
+    captured = _fake_dash_chatwoot(monkeypatch)
+    app = create_app(_settings(tmp_path, chatwoot_base_url="http://cw.test",
+                               chatwoot_api_token="tok", chatwoot_account_id=3))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        body = client.get("/ajustes/etiquetas.json").json()
+        assert [e["title"] for e in body["etiquetas"]] == ["Reserva confirmada", "VIP"]
+        assert body["motivo"] is None
+        assert captured["creds"] == ("http://cw.test", "tok", 3)
+
+
+def test_etiquetas_json_sin_labels_indica_motivo(tmp_path, monkeypatch):
+    _fake_dash_chatwoot(monkeypatch, labels=[])
+    app = create_app(_settings(tmp_path, chatwoot_base_url="http://cw.test",
+                               chatwoot_api_token="tok", chatwoot_account_id=3))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        body = client.get("/ajustes/etiquetas.json").json()
+        assert body["etiquetas"] == []
+        assert "no tiene etiquetas" in body["motivo"]
+
+
+def test_etiquetas_json_401_da_pista(tmp_path, monkeypatch):
+    import httpx as _httpx
+
+    request = _httpx.Request("GET", "http://cw.test/api/v1/accounts/1/labels")
+    response = _httpx.Response(401, request=request)
+    _fake_dash_chatwoot(
+        monkeypatch,
+        error=_httpx.HTTPStatusError("401", request=request, response=response),
+    )
+    app = create_app(_settings(tmp_path, chatwoot_base_url="http://cw.test",
+                               chatwoot_api_token="tok", chatwoot_account_id=3))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        body = client.get("/ajustes/etiquetas.json").json()
+        assert body["etiquetas"] == []
+        assert "401" in body["motivo"]
+        assert "token" in body["motivo"].lower()
+
+
+# --- ChatwootClient: labels de cuenta y contactos por etiqueta ---
+
+
+class ChatwootLabelsCuentaFake:
+    def __init__(self, labels=None, contactos_por_etiqueta=None):
+        self.requests = []
+        self.labels = labels or []
+        self.contactos_por_etiqueta = contactos_por_etiqueta or {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append((request.method, request.url.path))
+            path = request.url.path
+            if path.endswith("/labels") and request.method == "GET":
+                return httpx.Response(200, json={"payload": self.labels})
+            if path.endswith("/contacts/filter"):
+                body = json.loads(request.content)
+                titulo = body["payload"][0]["values"][0]
+                return httpx.Response(
+                    200, json={"payload": self.contactos_por_etiqueta.get(titulo, [])}
+                )
+            return httpx.Response(404, json={})
+
+        self.transport = httpx.MockTransport(handler)
+
+    def client(self):
+        return ChatwootClient(
+            base_url="http://chatwoot.test", api_token="token-x", account_id=1,
+            transport=self.transport,
+        )
+
+
+def test_listar_labels_cuenta():
+    fake = ChatwootLabelsCuentaFake(labels=[{"id": 1, "title": "VIP", "color": "#ffc53d"}])
+    assert fake.client().listar_labels_cuenta() == [{"id": 1, "title": "VIP", "color": "#ffc53d"}]
+
+
+def test_contactos_con_etiqueta_verifica_lado_cliente():
+    """The filter API shape must be verified live: any contact it returns
+    without really having the label is dropped client-side."""
+    fake = ChatwootLabelsCuentaFake(
+        contactos_por_etiqueta={
+            "vieja": [
+                {"id": 7, "labels": ["vieja", "vip"]},
+                {"id": 8, "labels": ["vip"]},  # API noise: no tiene la etiqueta
+            ]
+        }
+    )
+    contactos = fake.client().contactos_con_etiqueta("vieja")
+    assert [c["id"] for c in contactos] == [7]
+
+
+# --- T15 (parte B): migración al cambiar la etiqueta (L24) ---
+
+
+class ChatwootMigrarFake:
+    """MockTransport-backed Chatwoot for migrar_etiqueta unit tests."""
+
+    def __init__(self, contactos=None):
+        self.requests = []
+        self.contactos = contactos or []
+        self.labels_por_contacto = {
+            c["id"]: list(c.get("labels", [])) for c in self.contactos
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append((request.method, request.url.path))
+            path = request.url.path
+            if path.endswith("/contacts/filter") and request.method == "POST":
+                body = json.loads(request.content)
+                titulo = body["payload"][0]["values"][0]
+                coinciden = [
+                    c for c in self.contactos if titulo in (c.get("labels") or [])
+                ]
+                return httpx.Response(200, json={"payload": coinciden})
+            if "/contacts/" in path and "/labels" in path and request.method == "GET":
+                contacto_id = int(path.split("/contacts/")[1].split("/")[0])
+                return httpx.Response(
+                    200, json={"payload": self.labels_por_contacto.get(contacto_id, [])}
+                )
+            if "/contacts/" in path and "/labels" in path and request.method == "POST":
+                contacto_id = int(path.split("/contacts/")[1].split("/")[0])
+                labels = json.loads(request.content)["labels"]
+                self.labels_por_contacto[contacto_id] = labels
+                return httpx.Response(200, json={"payload": labels})
+            return httpx.Response(404, json={})
+
+        self.transport = httpx.MockTransport(handler)
+
+    def client(self):
+        return ChatwootClient(
+            base_url="http://chatwoot.test", api_token="token-x", account_id=1,
+            transport=self.transport,
+        )
+
+
+def _migrar_settings(tmp_path):
+    return _settings(
+        tmp_path,
+        chatwoot_base_url="http://chatwoot.test",
+        chatwoot_api_token="token-x",
+        chatwoot_account_id=1,
+    )
+
+
+def test_migrar_etiqueta_intercambia_preservando_resto(tmp_path):
+    fake = ChatwootMigrarFake(
+        contactos=[
+            {"id": 1, "labels": ["vieja", "vip"]},
+            {"id": 2, "labels": ["vieja"]},
+        ]
+    )
+    resultado = migrar_etiqueta(
+        _migrar_settings(tmp_path), "vieja", "nueva", transport=fake.transport
+    )
+    assert resultado["total"] == 2
+    assert sorted(resultado["migrados"]) == [1, 2]
+    assert resultado["fallas"] == []
+    assert fake.labels_por_contacto[1] == ["vip", "nueva"]
+    assert fake.labels_por_contacto[2] == ["nueva"]
+    assert "vieja" not in fake.labels_por_contacto[1]
+    assert "vieja" not in fake.labels_por_contacto[2]
+
+
+def test_migrar_etiqueta_no_duplica_si_nueva_ya_existe(tmp_path):
+    fake = ChatwootMigrarFake(contactos=[{"id": 1, "labels": ["vieja", "nueva"]}])
+    migrar_etiqueta(_migrar_settings(tmp_path), "vieja", "nueva", transport=fake.transport)
+    assert fake.labels_por_contacto[1] == ["nueva"]
+
+
+def test_migrar_etiqueta_registra_falla_sin_abortar(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/contacts/filter"):
+            body = json.loads(request.content)
+            titulo = body["payload"][0]["values"][0]
+            return httpx.Response(
+                200, json={"payload": [{"id": 1, "labels": [titulo]}, {"id": 2, "labels": [titulo]}]}
+            )
+        if "/contacts/1/labels" in request.url.path and request.method == "GET":
+            return httpx.Response(200, json={"payload": ["vieja"]})
+        if "/contacts/1/labels" in request.url.path and request.method == "POST":
+            return httpx.Response(200, json={"payload": ["nueva"]})
+        # contact 2 fails on label read
+        return httpx.Response(500, json={})
+
+    transport = httpx.MockTransport(handler)
+    resultado = migrar_etiqueta(
+        _migrar_settings(tmp_path), "vieja", "nueva", transport=transport
+    )
+    assert resultado["total"] == 2
+    assert resultado["migrados"] == [1]
+    assert len(resultado["fallas"]) == 1
+    assert resultado["fallas"][0]["contacto_id"] == 2
+
+
+def _fake_chatwoot_con_contactos(monkeypatch, contactos):
+    captured = {}
+
+    class FakeChatwootClient:
+        def __init__(self, base_url, api_token, account_id):
+            captured["creds"] = (base_url, api_token, account_id)
+
+        def contactos_con_etiqueta(self, titulo):
+            return contactos
+
+    monkeypatch.setattr("app.dash.ChatwootClient", FakeChatwootClient)
+    return captured
+
+
+def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch):
+    _fake_chatwoot_con_contactos(
+        monkeypatch,
+        [{"id": 1, "labels": ["Reserva confirmada"]}, {"id": 2, "labels": ["Reserva confirmada"]}],
+    )
+    app = create_app(
+        _settings(
+            tmp_path,
+            chatwoot_base_url="http://cw.test",
+            chatwoot_api_token="tok",
+            chatwoot_account_id=3,
+        )
+    )
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.post(
+            "/ajustes",
+            data=dict(FORM_DATA, etiqueta_confirmada="Confirmada nueva"),
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        text = response.text
+        assert "2" in text
+        assert "Reserva confirmada" in text
+        assert "Confirmada nueva" in text
+        assert "migrar-etiqueta" in text
+
+        with client.app.state.sessionmaker() as session:
+            config = session.get(Configuracion, 1)
+            assert config.etiqueta_confirmada == "Confirmada nueva"
+
+
+def test_post_ajustes_cambio_etiqueta_cero_contactos_redirige(tmp_path, monkeypatch):
+    _fake_chatwoot_con_contactos(monkeypatch, [])
+    app = create_app(
+        _settings(
+            tmp_path,
+            chatwoot_base_url="http://cw.test",
+            chatwoot_api_token="tok",
+            chatwoot_account_id=3,
+        )
+    )
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.post(
+            "/ajustes",
+            data=dict(FORM_DATA, etiqueta_confirmada="Otra etiqueta"),
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/ajustes"
+
+
+def test_post_ajustes_cambio_etiqueta_chatwoot_no_configurado_redirige(client):
+    response = client.post(
+        "/ajustes",
+        data=dict(FORM_DATA, etiqueta_confirmada="Etiqueta X"),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/ajustes"
+
+
+def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_migrar(settings, vieja, nueva):
+        calls.append((vieja, nueva))
+        return {"migrados": [1, 2], "fallas": []}
+
+    monkeypatch.setattr("app.dash.migrar_etiqueta", fake_migrar)
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.post(
+            "/ajustes/migrar-etiqueta",
+            data={"vieja": "Reserva confirmada", "nueva": "Confirmada nueva"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/ajustes?migrados=2&fallas=0"
+        assert calls == [("Reserva confirmada", "Confirmada nueva")]
+
+
+def test_get_ajustes_muestra_banner_de_migracion(client):
+    response = client.get("/ajustes?migrados=2")
+    assert response.status_code == 200
+    assert "Migración lista: 2 contactos actualizados" in response.text
+
+
+def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeypatch):
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.post(
+            "/ajustes/migrar-etiqueta",
+            data={"vieja": "", "nueva": "Confirmada nueva"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/ajustes"
+
+        response = client.post(
+            "/ajustes/migrar-etiqueta",
+            data={"vieja": "Misma", "nueva": "Misma"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/ajustes"

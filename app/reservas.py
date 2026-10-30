@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ajustes import obtener_configuracion
 from app.db import get_session
 from app.etiquetas import etiquetar_confirmada
 from app.models import Reserva
@@ -28,7 +29,8 @@ def create_reserva(
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
-    etiquetar_confirmada(request.app.state.settings, reserva)
+    config = obtener_configuracion(session, request.app.state.settings)
+    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
     return reserva
 
 
@@ -70,7 +72,8 @@ def update_reserva(
         setattr(reserva, field, value)
     session.commit()
     session.refresh(reserva)
-    etiquetar_confirmada(request.app.state.settings, reserva)
+    config = obtener_configuracion(session, request.app.state.settings)
+    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
     return reserva
 
 

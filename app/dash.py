@@ -24,7 +24,7 @@ from app.auth import (
 from app.ajustes import obtener_configuracion
 from app.chatwoot import ChatwootClient
 from app.db import get_session
-from app.etiquetas import etiquetar_confirmada
+from app.etiquetas import etiquetar_confirmada, migrar_etiqueta
 from app.models import Reserva
 from app.schemas import ReservaCreate
 from app.scheduler import parse_hora, reprogramar
@@ -152,7 +152,8 @@ def crear_reserva(request: Request, form: dict = Depends(_form_dict), session: S
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
-    etiquetar_confirmada(request.app.state.settings, reserva)
+    config = obtener_configuracion(session, request.app.state.settings)
+    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
     return RedirectResponse("/", status_code=303)
 
 
@@ -172,7 +173,8 @@ def actualizar_reserva(
     for field, value in payload.model_dump().items():
         setattr(reserva, field, value)
     session.commit()
-    etiquetar_confirmada(request.app.state.settings, reserva)
+    config = obtener_configuracion(session, request.app.state.settings)
+    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
     return RedirectResponse("/", status_code=303)
 
 
@@ -181,18 +183,66 @@ def actualizar_reserva(
 AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
 
 
-def _render_ajustes(request: Request, config, errors: dict | None = None, values: dict | None = None):
+def _render_ajustes(
+    request: Request,
+    config,
+    errors: dict | None = None,
+    values: dict | None = None,
+    migrados: int | None = None,
+    fallas: int | None = None,
+):
     return templates.TemplateResponse(
         request,
         "ajustes.html",
-        {"config": config, "errors": errors or {}, "values": values or {}},
+        {
+            "config": config,
+            "errors": errors or {},
+            "values": values or {},
+            "migrados": migrados,
+            "fallas": fallas,
+        },
     )
 
 
 @router.get("/ajustes")
-def ajustes_page(request: Request, session: Session = Depends(get_session)):
+def ajustes_page(
+    request: Request,
+    migrados: int | None = None,
+    fallas: int | None = None,
+    session: Session = Depends(get_session),
+):
     config = obtener_configuracion(session, request.app.state.settings)
-    return _render_ajustes(request, config)
+    return _render_ajustes(request, config, migrados=migrados, fallas=fallas)
+
+
+def _chatwoot_configurado(settings: Settings) -> bool:
+    """True when the admin has supplied the three Chatwoot credentials."""
+    return bool(
+        settings.chatwoot_base_url
+        and settings.chatwoot_api_token
+        and settings.chatwoot_account_id
+    )
+
+
+@router.get("/ajustes")
+def ajustes_page(
+    request: Request,
+    migrados: int | None = None,
+    fallas: int | None = None,
+    session: Session = Depends(get_session),
+):
+    config = obtener_configuracion(session, request.app.state.settings)
+    return templates.TemplateResponse(
+        request,
+        "ajustes.html",
+        {
+            "config": config,
+            "errors": {},
+            "values": {},
+            "migrados": migrados,
+            "fallas": fallas,
+        },
+    )
 
 
 @router.post("/ajustes")
@@ -202,6 +252,7 @@ def ajustes_submit(
     hora_invitados: str | None = Form(None),
     plantilla_confirmacion: str | None = Form(None),
     plantilla_invitados: str | None = Form(None),
+    etiqueta_confirmada: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     settings = request.app.state.settings
@@ -210,6 +261,7 @@ def ajustes_submit(
         "hora_invitados": (hora_invitados or "").strip(),
         "plantilla_confirmacion": (plantilla_confirmacion or "").strip(),
         "plantilla_invitados": (plantilla_invitados or "").strip(),
+        "etiqueta_confirmada": (etiqueta_confirmada or "").strip(),
     }
     errors: dict[str, str] = {}
     for campo in ("hora_confirmacion", "hora_invitados"):
@@ -220,21 +272,62 @@ def ajustes_submit(
     for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "El nombre de la plantilla es obligatorio."
+    if not values["etiqueta_confirmada"]:
+        errors["etiqueta_confirmada"] = "El nombre de la etiqueta es obligatorio."
     if errors:
         config = obtener_configuracion(session, settings)
         return _render_ajustes(request, config, errors=errors, values=values)
 
     config = obtener_configuracion(session, settings)
+    vieja = config.etiqueta_confirmada
     config.hora_confirmacion = values["hora_confirmacion"]
     config.hora_invitados = values["hora_invitados"]
     config.plantilla_confirmacion = values["plantilla_confirmacion"]
     config.plantilla_invitados = values["plantilla_invitados"]
+    config.etiqueta_confirmada = values["etiqueta_confirmada"]
     session.commit()
 
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
         reprogramar(scheduler, request.app.state, settings)
+
+    nueva = values["etiqueta_confirmada"]
+    if _chatwoot_configurado(settings) and vieja != nueva:
+        try:
+            chatwoot = ChatwootClient(
+                settings.chatwoot_base_url,
+                settings.chatwoot_api_token,
+                settings.chatwoot_account_id,
+            )
+            total = len(chatwoot.contactos_con_etiqueta(vieja))
+        except Exception:
+            return RedirectResponse("/ajustes", status_code=303)
+        if total > 0:
+            return templates.TemplateResponse(
+                request,
+                "migrar_etiqueta.html",
+                {"vieja": vieja, "nueva": nueva, "total": total},
+            )
+
     return RedirectResponse("/ajustes", status_code=303)
+
+
+@router.post("/ajustes/migrar-etiqueta")
+def migrar_etiqueta_submit(
+    request: Request,
+    vieja: str | None = Form(None),
+    nueva: str | None = Form(None),
+):
+    vieja = (vieja or "").strip()
+    nueva = (nueva or "").strip()
+    if not vieja or not nueva or vieja == nueva:
+        return RedirectResponse("/ajustes", status_code=303)
+
+    resultado = migrar_etiqueta(request.app.state.settings, vieja, nueva)
+    return RedirectResponse(
+        f"/ajustes?migrados={len(resultado['migrados'])}&fallas={len(resultado['fallas'])}",
+        status_code=303,
+    )
 
 
 @router.get("/ajustes/plantillas.json")
@@ -286,6 +379,50 @@ def ajustes_plantillas(request: Request):
                 "language": p.get("language"),
             }
             for p in plantillas
+        ],
+        "motivo": None,
+    }
+
+
+@router.get("/ajustes/etiquetas.json")
+def ajustes_etiquetas(request: Request):
+    """Account labels from the Chatwoot API (L24) for the /ajustes selector.
+    Fail-soft: never breaks the page, always returns a motivo."""
+    settings = request.app.state.settings
+    if not _chatwoot_configurado(settings):
+        return {
+            "etiquetas": [],
+            "motivo": "Chatwoot no está configurado (faltan URL, token o account id en el entorno). Se puede escribir el nombre a mano.",
+        }
+    try:
+        chatwoot = ChatwootClient(
+            settings.chatwoot_base_url, settings.chatwoot_api_token, settings.chatwoot_account_id
+        )
+        etiquetas = chatwoot.listar_labels_cuenta()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            return {
+                "etiquetas": [],
+                "motivo": (
+                    "Chatwoot rechazó las credenciales (401): verificá el token de API "
+                    "(Chatwoot → Perfil → Token de acceso) y el account id (el número "
+                    "que aparece en la URL de Chatwoot después de /app/accounts/)."
+                ),
+            }
+        return {
+            "etiquetas": [],
+            "motivo": f"Chatwoot respondió con error {exc.response.status_code}: {exc}",
+        }
+    except Exception as exc:
+        return {"etiquetas": [], "motivo": f"Chatwoot no respondió: {exc}"}
+    if not etiquetas:
+        return {
+            "etiquetas": [],
+            "motivo": "La cuenta no tiene etiquetas creadas: se puede escribir el nombre a mano.",
+        }
+    return {
+        "etiquetas": [
+            {"title": e.get("title"), "color": e.get("color")} for e in etiquetas
         ],
         "motivo": None,
     }
