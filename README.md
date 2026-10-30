@@ -41,6 +41,10 @@ uvicorn app.main:app --reload     # http://localhost:8000/docs
 
 ## Probar en un servidor (Docker)
 
+> ¿Usás **Dokploy**? Tenés la guía específica paso a paso en
+> `docs/dokploy.md` (GitHub privado, variables, volumen del SQLite y
+> dominio con HTTPS automático).
+
 1. Copiá el repo al server (git clone, rsync o scp).
 2. Creá tu `.env` a partir de `env.example` y completá al menos:
 
