@@ -35,7 +35,7 @@ Asumpciones del arquitecto (marcadas como tales):
 
 - **T12** — S3, S4 — inline — Checkbox "Enviar recordatorio" en el formulario del iframe (default sí), respetado por POST y PATCH del iframe. Commit: (pendiente)
 - **T11** — S3, S8 — inline — Configuración en DB (tabla `configuracion`, fila única: horas y plantillas, sembrada desde los defaults de env en el primer arranque) + página /ajustes en el dashboard (validación HH:MM, re-programación en vivo de los jobs del scheduler) + jobs que leen plantilla de DB en cada corrida. Commit: 83e59a1 — DONE (RED colección + 3 fallos → GREEN 93/93).
-- **T13** — S3 — inline — Listar plantillas de WhatsApp desde la API de Chatwoot en el panel: ChatwootClient.listar_inboxes/listar_plantillas (L20), autodetección del inbox de WhatsApp, endpoint /ajustes/plantillas.json y datalist en /ajustes que degrada a texto manual si Chatwoot no está configurado (L6). Commit: (pendiente)
+- **T13** — S3 — inline — Listar plantillas de WhatsApp desde la API de Chatwoot en el panel: ChatwootClient.listar_inboxes/listar_plantillas (L20), autodetección del inbox de WhatsApp, endpoint /ajustes/plantillas.json y datalist en /ajustes que degrada a texto manual si Chatwoot no está configurado (L6). Commit: 1284817 — DONE (RED 8 fallos → GREEN 101/101).
 - **T14** — S10 — inline — Etiqueta "Reserva confirmada" en Chatwoot al confirmar una reserva (dashboard, iframe y API REST), fail-soft sin token (L6). Commit: (pendiente)
 
 ## Log

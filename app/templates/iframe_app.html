@@ -67,6 +67,7 @@
       margin-bottom: 12px;
     }
     label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 3px; }
+    label.chk { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
     input, select {
       width: 100%;
       padding: 6px 8px;
@@ -157,6 +158,7 @@
       </div>
       <label for="f-detalles">Detalles</label>
       <input id="f-detalles" name="detalles" maxlength="2000" placeholder="Mesa adentro, cumpleaños…">
+      <label class="chk"><input type="checkbox" id="f-recordatorio" name="enviar_recordatorio" checked> Enviar recordatorios de WhatsApp</label>
       <p class="hint" id="edit-hint" style="display:none">✏️ Estás editando una reserva existente — al guardar se reemplazan sus datos</p>
       <button type="submit" id="f-submit">Registrar reserva</button>
       <button type="submit" id="f-submit-edit" style="display:none">Guardar cambios</button>
@@ -215,6 +217,7 @@
       document.getElementById("f-telefono").value = contactPhone;
       document.getElementById("f-personas").value = "2";
       document.getElementById("f-estado").value = "pendiente";
+      document.getElementById("f-recordatorio").checked = true;
       document.getElementById("f-submit").style.display = "block";
       document.getElementById("f-submit-edit").style.display = "none";
       document.getElementById("f-cancel").style.display = "none";
@@ -234,6 +237,7 @@
       document.getElementById("f-personas").value = String(reserva.personas);
       document.getElementById("f-estado").value = reserva.estado;
       document.getElementById("f-detalles").value = reserva.detalles || "";
+      document.getElementById("f-recordatorio").checked = reserva.enviar_recordatorio !== false;
       document.getElementById("f-submit").style.display = "none";
       document.getElementById("f-submit-edit").style.display = "block";
       document.getElementById("f-cancel").style.display = "inline-block";
@@ -346,6 +350,7 @@
         personas: parseInt(document.getElementById("f-personas").value, 10),
         estado: document.getElementById("f-estado").value,
         detalles: document.getElementById("f-detalles").value.trim() || null,
+        enviar_recordatorio: document.getElementById("f-recordatorio").checked,
       };
 
       const url = editingId

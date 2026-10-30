@@ -90,6 +90,7 @@ def _serialize(reserva: Reserva) -> dict:
         "personas": reserva.personas,
         "estado": reserva.estado,
         "detalles": reserva.detalles,
+        "enviar_recordatorio": reserva.enviar_recordatorio,
     }
 
 

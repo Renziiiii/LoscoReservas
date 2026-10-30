@@ -526,3 +526,77 @@ def test_iframe_row_actions_only_on_buttons(tmp_path):
         assert '<tr data-id="${r.id}"' in response.text
         assert 'data-reserva="${esc(JSON.stringify(r))}"' in response.text
         assert '<tr data-id="${r.id}" data-edit' not in response.text
+
+
+# --- T12: opt-out de mensajería por reserva desde el iframe (L19) ---
+
+
+def test_iframe_app_page_contains_recordatorio_checkbox(tmp_path):
+    """Structural: the form exposes the 'send reminder' choice (default on)."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        for marker in ('id="f-recordatorio"', 'name="enviar_recordatorio"'):
+            assert marker in response.text, marker
+
+
+def test_iframe_create_defaults_enviar_recordatorio_true(tmp_path):
+    """Omitting the field keeps the reminder on (user: default sí)."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/iframe/reservas.json", params={"key": EMBED_KEY}, json=_payload()
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["enviar_recordatorio"] is True
+
+
+def test_iframe_create_respects_enviar_recordatorio_false(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+            json=_payload(enviar_recordatorio=False),
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["enviar_recordatorio"] is False
+
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json()[0]["enviar_recordatorio"] is False
+
+
+def test_iframe_json_list_includes_enviar_recordatorio(tmp_path):
+    """The row data feeds the edit form, so the flag must be serialized."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        _create(client, telefono="+54 9 11 5555-1234", enviar_recordatorio=False)
+        response = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert response.status_code == 200
+        assert response.json()[0]["enviar_recordatorio"] is False
+
+
+def test_iframe_patch_enviar_recordatorio_and_persists(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234")
+
+        patch = client.patch(
+            f"/iframe/reservas/{created['id']}.json",
+            params={"key": EMBED_KEY},
+            json={"enviar_recordatorio": False},
+        )
+        assert patch.status_code == 200, patch.text
+        assert patch.json()["enviar_recordatorio"] is False
+
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json()[0]["enviar_recordatorio"] is False
