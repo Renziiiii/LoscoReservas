@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.db import get_session
 from app.models import Reserva
-from app.schemas import ReservaCreate
+from app.schemas import ReservaCreate, ReservaUpdate
 
 router = APIRouter()
 
@@ -82,6 +82,7 @@ def iframe_app(request: Request, key: str = Query(default="")):
 
 def _serialize(reserva: Reserva) -> dict:
     return {
+        "id": reserva.id,
         "nombre": reserva.nombre,
         "telefono": reserva.telefono,
         "fecha": reserva.fecha.isoformat(),
@@ -114,6 +115,49 @@ def iframe_reservas_create(
     session.commit()
     session.refresh(reserva)
     return JSONResponse(_serialize(reserva), status_code=201, headers=headers)
+
+
+@router.patch("/iframe/reservas/{reserva_id}.json", include_in_schema=False)
+def iframe_reservas_patch(
+    request: Request,
+    reserva_id: int,
+    payload: ReservaUpdate,
+    key: str = Query(default=""),
+    session: Session = Depends(get_session),
+):
+    """Partial edit of a reservation from the Chatwoot tab (T10/L16)."""
+    settings: Settings = request.app.state.settings
+    headers = {"Content-Security-Policy": _frame_ancestors(settings)}
+    if not _autorizado(request, key):
+        return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
+    reserva = session.get(Reserva, reserva_id)
+    if reserva is None:
+        return JSONResponse({"detail": "not found"}, status_code=404, headers=headers)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(reserva, field, value)
+    session.commit()
+    session.refresh(reserva)
+    return JSONResponse(_serialize(reserva), status_code=200, headers=headers)
+
+
+@router.delete("/iframe/reservas/{reserva_id}.json", include_in_schema=False)
+def iframe_reservas_delete(
+    request: Request,
+    reserva_id: int,
+    key: str = Query(default=""),
+    session: Session = Depends(get_session),
+):
+    """Delete a reservation from the Chatwoot tab (T10/L16)."""
+    settings: Settings = request.app.state.settings
+    headers = {"Content-Security-Policy": _frame_ancestors(settings)}
+    if not _autorizado(request, key):
+        return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
+    reserva = session.get(Reserva, reserva_id)
+    if reserva is None:
+        return JSONResponse({"detail": "not found"}, status_code=404, headers=headers)
+    session.delete(reserva)
+    session.commit()
+    return Response(status_code=204, headers=headers)
 
 
 @router.get("/iframe/reservas.json", include_in_schema=False)

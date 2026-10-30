@@ -20,16 +20,19 @@ Endpoints (todos autorizados por la **clave de embed**):
 
 | Endpoint | Uso |
 | --- | --- |
-| `/iframe/app?key=K` | La página que se configura como Dashboard App (incluye el formulario de alta, T9) |
+| `/iframe/app?key=K` | La página que se configura como Dashboard App (incluye el formulario de alta/edición/baja, T9/T10) |
 | `GET /iframe/reservas.json?tel=...&key=K` | Datos JSON que consume esa página |
 | `POST /iframe/reservas.json?key=K` | Alta de reserva desde la pestaña (misma validación que la API) |
+| `PATCH /iframe/reservas/{id}.json?key=K` | Edición parcial de una reserva desde la pestaña |
+| `DELETE /iframe/reservas/{id}.json?key=K` | Baja de una reserva desde la pestaña |
 | `/iframe/reservas?tel=...&key=K` | Página HTML directa (debug / enlace manual) |
 
-La pestaña permite **registrar reservas sin salir de Chatwoot**: el
-formulario nace pre-cargado con el nombre y teléfono del contacto de la
-conversación (vienen en el `appContext`) y el agente completa fecha, hora,
-personas y detalles. La edición y la baja siguen haciéndose desde el
-dashboard.
+La pestaña permite **gestionar las reservas del contacto sin salir de
+Chatwoot**: el formulario nace pre-cargado con el nombre y teléfono del
+contacto de la conversación (vienen en el `appContext`), el agente completa
+fecha, hora, personas y detalles, y desde cada fila puede editar o eliminar
+la reserva. La interfaz usa un **tema oscuro fijo emparejado a Chatwoot**
+(paleta slate dark + acento brand `#1f93ff`, estados amber/teal/ruby).
 
 La clave viaja en la URL de la página configurada y se reutiliza para el
 fetch de datos; no se hardcodea en el fuente. Sin clave configurada, todo

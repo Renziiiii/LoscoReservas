@@ -294,3 +294,162 @@ def test_iframe_app_page_contains_create_form(tmp_path):
             'name="telefono"',
         ):
             assert marker in response.text, marker
+
+
+# --- T10: CRUD completo en el iframe + tema dark Chatwoot (L16) ---
+
+
+def test_iframe_json_list_includes_id(tmp_path):
+    """The iframe list now exposes the reserva id so the UI can address rows."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234")
+        response = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert "id" in data[0]
+        assert data[0]["id"] == created["id"]
+
+
+def test_iframe_patch_updates_reserva_and_persists(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234", personas=4)
+        reserva_id = created["id"]
+
+        patch = client.patch(
+            f"/iframe/reservas/{reserva_id}.json",
+            params={"key": EMBED_KEY},
+            json={"personas": 6, "detalles": "Mesa cerca de la ventana"},
+        )
+        assert patch.status_code == 200, patch.text
+        body = patch.json()
+        assert body["personas"] == 6
+        assert body["detalles"] == "Mesa cerca de la ventana"
+        assert body["id"] == reserva_id
+
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.status_code == 200
+        row = listed.json()[0]
+        assert row["personas"] == 6
+        assert row["detalles"] == "Mesa cerca de la ventana"
+        assert row["nombre"] == created["nombre"]
+
+
+def test_iframe_patch_wrong_key_forbidden_and_unchanged(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234", personas=4)
+        reserva_id = created["id"]
+
+        response = client.patch(
+            f"/iframe/reservas/{reserva_id}.json",
+            params={"key": "nope"},
+            json={"personas": 6},
+        )
+        assert response.status_code == 403
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json()[0]["personas"] == 4
+
+
+def test_iframe_patch_invalid_payload_unprocessable_and_unchanged(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234", personas=4)
+        reserva_id = created["id"]
+
+        response = client.patch(
+            f"/iframe/reservas/{reserva_id}.json",
+            params={"key": EMBED_KEY},
+            json={"personas": 0},
+        )
+        assert response.status_code == 422
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json()[0]["personas"] == 4
+
+
+def test_iframe_patch_unknown_id_returns_404(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.patch(
+            "/iframe/reservas/9999.json",
+            params={"key": EMBED_KEY},
+            json={"personas": 6},
+        )
+        assert response.status_code == 404
+
+
+def test_iframe_delete_removes_reserva(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234")
+        reserva_id = created["id"]
+
+        before = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert len(before.json()) == 1
+
+        response = client.delete(
+            f"/iframe/reservas/{reserva_id}.json", params={"key": EMBED_KEY}
+        )
+        assert response.status_code == 204
+
+        after = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert after.json() == []
+
+
+def test_iframe_delete_wrong_key_forbidden_and_keeps_reserva(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        created = _create(client, telefono="+54 9 11 5555-1234")
+        reserva_id = created["id"]
+
+        response = client.delete(
+            f"/iframe/reservas/{reserva_id}.json", params={"key": "nope"}
+        )
+        assert response.status_code == 403
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert len(listed.json()) == 1
+
+
+def test_iframe_delete_unknown_id_returns_404(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.delete(
+            "/iframe/reservas/9999.json", params={"key": EMBED_KEY}
+        )
+        assert response.status_code == 404
+
+
+def test_iframe_app_page_has_edit_delete_and_dark_theme(tmp_path):
+    """Structural: rows carry edit/delete markers, edit button has its own id,
+    and the page uses Chatwoot's real dark background."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        text = response.text
+        assert "data-edit=" in text
+        assert "data-delete=" in text
+        assert 'id="f-submit-edit"' in text
+        assert "#111113" in text

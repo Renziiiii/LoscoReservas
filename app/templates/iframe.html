@@ -5,17 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Losco — Reservas del contacto</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background: #f7f7f8; color: #222; }
+    :root {
+      --bg: #111113;
+      --surface: #18191b;
+      --border-subtle: #212225;
+      --border-strong: #272a2d;
+      --text: #edeef0;
+      --text-secondary: #b0b4ba;
+      --muted: #696e77;
+      --accent: #1f93ff;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
     .wrap { padding: 12px; }
-    h2 { font-size: 15px; margin: 0 0 8px; color: #444; }
-    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #e2e2e4; border-radius: 6px; }
-    th, td { text-align: left; padding: 6px 8px; font-size: 13px; border-bottom: 1px solid #eee; }
-    th { color: #777; font-weight: 600; background: #fafafa; }
-    .estado { padding: 1px 6px; border-radius: 999px; font-size: 12px; }
-    .estado.pendiente { background: #fff3cd; }
-    .estado.confirmada { background: #d4edda; }
-    .estado.cancelada { background: #f8d7da; text-decoration: line-through; }
-    .vacia { color: #888; font-size: 13px; }
+    h2 { font-size: 15px; margin: 0 0 8px; color: var(--text); }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    th { color: var(--text-secondary); font-weight: 600; background: var(--surface); }
+    tr:last-child td { border-bottom: none; }
+    .estado {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .estado.pendiente { color: #ffc53d; background: #302008; }
+    .estado.confirmada { color: #12a594; background: #0d2d2a; }
+    .estado.cancelada { color: #e54666; background: #3a141e; text-decoration: line-through; }
+    .vacia { color: var(--muted); font-size: 13px; }
   </style>
 </head>
 <body>

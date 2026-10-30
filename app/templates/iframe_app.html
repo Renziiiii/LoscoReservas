@@ -5,26 +5,114 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Losco — Reservas del contacto</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background: #f7f7f8; color: #222; }
+    :root {
+      --bg: #111113;
+      --surface: #18191b;
+      --border-subtle: #212225;
+      --border-strong: #272a2d;
+      --text: #edeef0;
+      --text-secondary: #b0b4ba;
+      --muted: #696e77;
+      --accent: #1f93ff;
+      --accent-hover: #1976d2;
+      --danger: #e54666;
+      --danger-bg: #3a141e;
+      --warn: #ffc53d;
+      --warn-bg: #302008;
+      --ok: #12a594;
+      --ok-bg: #0d2d2a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
     .wrap { padding: 12px; }
-    h2 { font-size: 15px; margin: 0 0 8px; color: #444; }
-    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #e2e2e4; border-radius: 6px; }
-    th, td { text-align: left; padding: 6px 8px; font-size: 13px; border-bottom: 1px solid #eee; }
-    th { color: #777; font-weight: 600; background: #fafafa; }
-    .estado { padding: 1px 6px; border-radius: 999px; font-size: 12px; }
-    .estado.pendiente { background: #fff3cd; }
-    .estado.confirmada { background: #d4edda; }
-    .estado.cancelada { background: #f8d7da; text-decoration: line-through; }
-    .vacia, .espera { color: #888; font-size: 13px; }
-    form { background: #fff; border: 1px solid #e2e2e4; border-radius: 6px; padding: 10px; margin-bottom: 12px; }
-    label { display: block; font-size: 12px; color: #666; margin: 6px 0 2px; }
-    input { width: 100%; box-sizing: border-box; padding: 5px 7px; font-size: 13px; border: 1px solid #ddd; border-radius: 4px; }
+    h2 { font-size: 15px; margin: 0 0 8px; color: var(--text); }
+    .espera, .vacia { color: var(--muted); font-size: 13px; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    th { color: var(--text-secondary); font-weight: 600; background: var(--surface); }
+    tr:last-child td { border-bottom: none; }
+    .estado {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .estado.pendiente { color: var(--warn); background: var(--warn-bg); }
+    .estado.confirmada { color: var(--ok); background: var(--ok-bg); }
+    .estado.cancelada { color: var(--danger); background: var(--danger-bg); text-decoration: line-through; }
+    form {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 3px; }
+    input {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
     .fila { display: flex; gap: 8px; }
     .fila > div { flex: 1; }
-    button { margin-top: 10px; width: 100%; padding: 7px; font-size: 13px; background: #3b82f6; color: #fff; border: 0; border-radius: 5px; cursor: pointer; }
-    button:disabled { background: #93c5fd; cursor: default; }
-    .ok { color: #15803d; font-size: 13px; margin-top: 6px; }
-    .err { color: #b91c1c; font-size: 13px; margin-top: 6px; }
+    button, .btn {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 7px 10px;
+      font-size: 13px;
+      border: 0;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    button[type="submit"] {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+    }
+    button[type="submit"]:hover { background: var(--accent-hover); }
+    button[type="submit"]:disabled { opacity: 0.6; cursor: default; }
+    .btn-cancel {
+      width: 100%;
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-strong);
+      text-align: center;
+    }
+    .btn-cancel:hover { color: var(--text); border-color: var(--text-secondary); }
+    .actions { white-space: nowrap; }
+    .actions button {
+      margin: 0 0 0 4px;
+      padding: 3px 6px;
+      font-size: 12px;
+      background: var(--border-strong);
+      color: var(--text-secondary);
+    }
+    .actions button:hover { color: var(--text); background: var(--border-subtle); }
+    .ok { color: var(--ok); font-size: 13px; margin-top: 8px; }
+    .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -60,6 +148,8 @@
       <label for="f-detalles">Detalles</label>
       <input id="f-detalles" name="detalles" maxlength="2000" placeholder="Mesa adentro, cumpleaños…">
       <button type="submit" id="f-submit">Registrar reserva</button>
+      <button type="submit" id="f-submit-edit" style="display:none">Guardar cambios</button>
+      <a href="javascript:void(0)" id="f-cancel" class="btn btn-cancel" style="display:none">Cancelar</a>
       <p class="ok" id="form-ok" style="display:none"></p>
       <p class="err" id="form-err" style="display:none"></p>
     </form>
@@ -77,6 +167,9 @@
     window.parent.postMessage("chatwoot-dashboard-app:fetch-info", "*");
 
     let telActual = "";
+    let contactName = "";
+    let contactPhone = "";
+    let editingId = null;
 
     window.addEventListener("message", (event) => {
       let data = event.data;
@@ -96,12 +189,45 @@
         return;
       }
       telActual = tel;
-      // Prefill the form with the contact's data (editable by the agent).
-      const form = document.getElementById("form-reserva");
-      form.style.display = "block";
-      document.getElementById("f-nombre").value = contact.name || "";
-      document.getElementById("f-telefono").value = tel;
+      contactName = contact.name || "";
+      contactPhone = tel;
+      document.getElementById("form-reserva").style.display = "block";
+      modoCrear();
       cargarReservas();
+    });
+
+    function modoCrear() {
+      const form = document.getElementById("form-reserva");
+      form.reset();
+      document.getElementById("f-nombre").value = contactName;
+      document.getElementById("f-telefono").value = contactPhone;
+      document.getElementById("f-personas").value = "2";
+      document.getElementById("f-submit").style.display = "block";
+      document.getElementById("f-submit-edit").style.display = "none";
+      document.getElementById("f-cancel").style.display = "none";
+      document.getElementById("form-ok").style.display = "none";
+      document.getElementById("form-err").style.display = "none";
+      editingId = null;
+    }
+
+    function modoEditar(reserva) {
+      document.getElementById("f-nombre").value = reserva.nombre;
+      document.getElementById("f-telefono").value = reserva.telefono;
+      document.getElementById("f-fecha").value = reserva.fecha;
+      document.getElementById("f-hora").value = reserva.hora;
+      document.getElementById("f-personas").value = String(reserva.personas);
+      document.getElementById("f-detalles").value = reserva.detalles || "";
+      document.getElementById("f-submit").style.display = "none";
+      document.getElementById("f-submit-edit").style.display = "block";
+      document.getElementById("f-cancel").style.display = "inline-block";
+      document.getElementById("form-ok").style.display = "none";
+      document.getElementById("form-err").style.display = "none";
+      editingId = reserva.id;
+    }
+
+    document.getElementById("f-cancel").addEventListener("click", (e) => {
+      e.preventDefault();
+      modoCrear();
     });
 
     function cargarReservas() {
@@ -128,18 +254,58 @@
       }
       estado.textContent = "";
       const filas = reservas.map((r) => `
-        <tr>
+        <tr data-reserva="${esc(JSON.stringify(r))}" data-edit="${r.id}" data-delete="${r.id}">
           <td>${fechaAr(r.fecha)}</td>
           <td>${r.hora}</td>
           <td>${r.personas}</td>
           <td><span class="estado ${esc(r.estado)}">${esc(r.estado)}</span></td>
           <td>${esc(r.detalles || "")}</td>
+          <td class="actions">
+            <button type="button" data-edit="${r.id}" aria-label="Editar">✏️</button>
+            <button type="button" data-delete="${r.id}" aria-label="Eliminar">🗑</button>
+          </td>
         </tr>`).join("");
       contenido.innerHTML = `
         <table>
-          <tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Estado</th><th>Detalles</th></tr>
+          <tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Estado</th><th>Detalles</th><th></th></tr>
           ${filas}
         </table>`;
+    }
+
+    document.getElementById("contenido").addEventListener("click", (e) => {
+      const editId = e.target.closest("[data-edit]")?.dataset.edit;
+      const deleteId = e.target.closest("[data-delete]")?.dataset.delete;
+      if (!editId && !deleteId) return;
+      e.preventDefault();
+      const id = parseInt(editId || deleteId, 10);
+      if (deleteId && !editId) {
+        eliminarReserva(id);
+        return;
+      }
+      const fila = document.querySelector(`tr[data-edit="${id}"]`);
+      if (!fila) return;
+      const reserva = JSON.parse(fila.dataset.reserva);
+      modoEditar(reserva);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    function eliminarReserva(id) {
+      const fila = document.querySelector(`tr[data-delete="${id}"]`);
+      const fecha = fila ? fila.getElementsByTagName("td")[0].textContent.trim() : "";
+      if (!window.confirm("¿Eliminar la reserva del " + fecha + "?")) return;
+      fetch("/iframe/reservas/" + id + ".json?key=" + encodeURIComponent(key), {
+        method: "DELETE",
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          cargarReservas();
+          if (editingId === id) modoCrear();
+        })
+        .catch(() => {
+          const err = document.getElementById("form-err");
+          err.textContent = "No se pudo eliminar la reserva.";
+          err.style.display = "block";
+        });
     }
 
     document.getElementById("form-reserva").addEventListener("submit", (e) => {
@@ -148,7 +314,9 @@
       const err = document.getElementById("form-err");
       ok.style.display = "none";
       err.style.display = "none";
-      const boton = document.getElementById("f-submit");
+      const boton = editingId
+        ? document.getElementById("f-submit-edit")
+        : document.getElementById("f-submit");
       boton.disabled = true;
 
       const body = {
@@ -160,8 +328,13 @@
         detalles: document.getElementById("f-detalles").value.trim() || null,
       };
 
-      fetch("/iframe/reservas.json?key=" + encodeURIComponent(key), {
-        method: "POST",
+      const url = editingId
+        ? "/iframe/reservas/" + editingId + ".json?key=" + encodeURIComponent(key)
+        : "/iframe/reservas.json?key=" + encodeURIComponent(key);
+      const method = editingId ? "PATCH" : "POST";
+
+      fetch(url, {
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
@@ -173,15 +346,17 @@
               : (data.detail || "error " + status);
             throw new Error(detalle);
           }
-          ok.textContent = "Reserva registrada para " + fechaAr(data.fecha) + " " + data.hora + ".";
+          ok.textContent = editingId
+            ? "Cambios guardados para " + fechaAr(data.fecha) + " " + data.hora + "."
+            : "Reserva registrada para " + fechaAr(data.fecha) + " " + data.hora + ".";
           ok.style.display = "block";
-          document.getElementById("form-reserva").reset();
-          document.getElementById("f-nombre").value = data.nombre;
-          document.getElementById("f-telefono").value = data.telefono;
+          modoCrear();
           cargarReservas();
         })
         .catch((e) => {
-          err.textContent = "No se pudo registrar: " + e.message;
+          err.textContent = editingId
+            ? "No se pudieron guardar los cambios: " + e.message
+            : "No se pudo registrar: " + e.message;
           err.style.display = "block";
         })
         .finally(() => { boton.disabled = false; });
@@ -196,6 +371,10 @@
     function fechaAr(iso) {
       const [y, m, d] = iso.split("-");
       return `${d}/${m}/${y}`;
+    }
+    function invertirFecha(texto) {
+      const [d, m, y] = texto.split("/");
+      return `${y}-${m}-${d}`;
     }
   </script>
 </body>
