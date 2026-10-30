@@ -20,9 +20,16 @@ Endpoints (todos autorizados por la **clave de embed**):
 
 | Endpoint | Uso |
 | --- | --- |
-| `/iframe/app?key=K` | La página que se configura como Dashboard App |
-| `/iframe/reservas.json?tel=...&key=K` | Datos JSON que consume esa página |
+| `/iframe/app?key=K` | La página que se configura como Dashboard App (incluye el formulario de alta, T9) |
+| `GET /iframe/reservas.json?tel=...&key=K` | Datos JSON que consume esa página |
+| `POST /iframe/reservas.json?key=K` | Alta de reserva desde la pestaña (misma validación que la API) |
 | `/iframe/reservas?tel=...&key=K` | Página HTML directa (debug / enlace manual) |
+
+La pestaña permite **registrar reservas sin salir de Chatwoot**: el
+formulario nace pre-cargado con el nombre y teléfono del contacto de la
+conversación (vienen en el `appContext`) y el agente completa fecha, hora,
+personas y detalles. La edición y la baja siguen haciéndose desde el
+dashboard.
 
 La clave viaja en la URL de la página configurada y se reutiliza para el
 fetch de datos; no se hardcodea en el fuente. Sin clave configurada, todo

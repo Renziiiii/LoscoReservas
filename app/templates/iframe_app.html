@@ -16,27 +16,67 @@
     .estado.confirmada { background: #d4edda; }
     .estado.cancelada { background: #f8d7da; text-decoration: line-through; }
     .vacia, .espera { color: #888; font-size: 13px; }
+    form { background: #fff; border: 1px solid #e2e2e4; border-radius: 6px; padding: 10px; margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #666; margin: 6px 0 2px; }
+    input { width: 100%; box-sizing: border-box; padding: 5px 7px; font-size: 13px; border: 1px solid #ddd; border-radius: 4px; }
+    .fila { display: flex; gap: 8px; }
+    .fila > div { flex: 1; }
+    button { margin-top: 10px; width: 100%; padding: 7px; font-size: 13px; background: #3b82f6; color: #fff; border: 0; border-radius: 5px; cursor: pointer; }
+    button:disabled { background: #93c5fd; cursor: default; }
+    .ok { color: #15803d; font-size: 13px; margin-top: 6px; }
+    .err { color: #b91c1c; font-size: 13px; margin-top: 6px; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h2>Reservas</h2>
     <p class="espera" id="estado">Esperando contexto de Chatwoot…</p>
+
+    <form id="form-reserva" style="display:none">
+      <div class="fila">
+        <div>
+          <label for="f-nombre">Nombre</label>
+          <input id="f-nombre" name="nombre" maxlength="120">
+        </div>
+        <div>
+          <label for="f-telefono">Teléfono</label>
+          <input id="f-telefono" name="telefono" maxlength="32">
+        </div>
+      </div>
+      <div class="fila">
+        <div>
+          <label for="f-fecha">Fecha</label>
+          <input id="f-fecha" name="fecha" type="date" required>
+        </div>
+        <div>
+          <label for="f-hora">Hora</label>
+          <input id="f-hora" name="hora" type="time" required>
+        </div>
+        <div>
+          <label for="f-personas">Personas</label>
+          <input id="f-personas" name="personas" type="number" min="1" max="200" value="2" required>
+        </div>
+      </div>
+      <label for="f-detalles">Detalles</label>
+      <input id="f-detalles" name="detalles" maxlength="2000" placeholder="Mesa adentro, cumpleaños…">
+      <button type="submit" id="f-submit">Registrar reserva</button>
+      <p class="ok" id="form-ok" style="display:none"></p>
+      <p class="err" id="form-err" style="display:none"></p>
+    </form>
+
     <div id="contenido"></div>
   </div>
   <script>
-    // Chatwoot Dashboard Apps deliver the conversation/contact context as a
-    // window message with event "appContext" (see docs/iframe-chatwoot.md).
-    // The embed key travels in THIS page's URL and is reused for the data
-    // fetch; it never needs to be hardcoded in the source.
-    const key = new URLSearchParams(window.location.search).get("key") || "";
-
     // Chatwoot Dashboard Apps deliver the conversation/contact context as a
     // window message. Per the official docs the payload arrives as a JSON
     // STRING, so it must be parsed; object payloads are accepted too.
     // On load we also ask for the context on demand in case Chatwoot already
     // sent it before this listener was attached.
+    const key = new URLSearchParams(window.location.search).get("key") || "";
+
     window.parent.postMessage("chatwoot-dashboard-app:fetch-info", "*");
+
+    let telActual = "";
 
     window.addEventListener("message", (event) => {
       let data = event.data;
@@ -55,38 +95,96 @@
           "El contacto no tiene teléfono cargado en Chatwoot.";
         return;
       }
+      telActual = tel;
+      // Prefill the form with the contact's data (editable by the agent).
+      const form = document.getElementById("form-reserva");
+      form.style.display = "block";
+      document.getElementById("f-nombre").value = contact.name || "";
+      document.getElementById("f-telefono").value = tel;
+      cargarReservas();
+    });
+
+    function cargarReservas() {
       document.getElementById("estado").textContent = "Cargando reservas…";
-      fetch("/iframe/reservas.json?tel=" + encodeURIComponent(tel) + "&key=" + encodeURIComponent(key))
+      fetch("/iframe/reservas.json?tel=" + encodeURIComponent(telActual) + "&key=" + encodeURIComponent(key))
         .then((r) => {
           if (!r.ok) throw new Error("HTTP " + r.status);
           return r.json();
         })
-        .then((reservas) => {
-          const estado = document.getElementById("estado");
-          const contenido = document.getElementById("contenido");
-          if (!reservas.length) {
-            estado.textContent = "Sin reservas para este contacto.";
-            return;
-          }
-          estado.textContent = "";
-          const filas = reservas.map((r) => `
-            <tr>
-              <td>${fechaAr(r.fecha)}</td>
-              <td>${r.hora}</td>
-              <td>${r.personas}</td>
-              <td><span class="estado ${esc(r.estado)}">${esc(r.estado)}</span></td>
-              <td>${esc(r.detalles || "")}</td>
-            </tr>`).join("");
-          contenido.innerHTML = `
-            <table>
-              <tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Estado</th><th>Detalles</th></tr>
-              ${filas}
-            </table>`;
-        })
+        .then((reservas) => renderTabla(reservas))
         .catch(() => {
           document.getElementById("estado").textContent =
             "No se pudieron cargar las reservas.";
         });
+    }
+
+    function renderTabla(reservas) {
+      const estado = document.getElementById("estado");
+      const contenido = document.getElementById("contenido");
+      if (!reservas.length) {
+        estado.textContent = "Sin reservas para este contacto.";
+        contenido.innerHTML = "";
+        return;
+      }
+      estado.textContent = "";
+      const filas = reservas.map((r) => `
+        <tr>
+          <td>${fechaAr(r.fecha)}</td>
+          <td>${r.hora}</td>
+          <td>${r.personas}</td>
+          <td><span class="estado ${esc(r.estado)}">${esc(r.estado)}</span></td>
+          <td>${esc(r.detalles || "")}</td>
+        </tr>`).join("");
+      contenido.innerHTML = `
+        <table>
+          <tr><th>Fecha</th><th>Hora</th><th>Personas</th><th>Estado</th><th>Detalles</th></tr>
+          ${filas}
+        </table>`;
+    }
+
+    document.getElementById("form-reserva").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const ok = document.getElementById("form-ok");
+      const err = document.getElementById("form-err");
+      ok.style.display = "none";
+      err.style.display = "none";
+      const boton = document.getElementById("f-submit");
+      boton.disabled = true;
+
+      const body = {
+        nombre: document.getElementById("f-nombre").value.trim(),
+        telefono: document.getElementById("f-telefono").value.trim(),
+        fecha: document.getElementById("f-fecha").value,
+        hora: document.getElementById("f-hora").value,
+        personas: parseInt(document.getElementById("f-personas").value, 10),
+        detalles: document.getElementById("f-detalles").value.trim() || null,
+      };
+
+      fetch("/iframe/reservas.json?key=" + encodeURIComponent(key), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then((r) => r.json().then((data) => ({ ok: r.ok, status: r.status, data })))
+        .then(({ ok, status, data }) => {
+          if (!ok) {
+            const detalle = Array.isArray(data.detail)
+              ? data.detail.map((d) => (d.msg || "") + (d.loc ? " (" + d.loc.join(".") + ")" : "")).join("; ")
+              : (data.detail || "error " + status);
+            throw new Error(detalle);
+          }
+          ok.textContent = "Reserva registrada para " + fechaAr(data.fecha) + " " + data.hora + ".";
+          ok.style.display = "block";
+          document.getElementById("form-reserva").reset();
+          document.getElementById("f-nombre").value = data.nombre;
+          document.getElementById("f-telefono").value = data.telefono;
+          cargarReservas();
+        })
+        .catch((e) => {
+          err.textContent = "No se pudo registrar: " + e.message;
+          err.style.display = "block";
+        })
+        .finally(() => { boton.disabled = false; });
     });
 
     // --- helpers ---

@@ -210,3 +210,87 @@ def test_iframe_json_unknown_phone_returns_empty_list(tmp_path):
         )
         assert response.status_code == 200
         assert response.json() == []
+
+
+# --- T9: alta de reserva desde la pestaña del iframe (L15) ---
+
+
+def _payload(**overrides) -> dict:
+    payload = {
+        "nombre": "Valen",
+        "telefono": "+54 9 11 5555-1234",
+        "fecha": "2026-12-24",
+        "hora": "21:00",
+        "personas": 4,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_iframe_create_reserva_with_valid_key(tmp_path):
+    """The Chatwoot tab can register a reservation: POST with the embed key
+    creates it and it shows up in the same phone's list."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+            json=_payload(),
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["nombre"] == "Valen"
+        assert body["telefono"] == "+5491155551234"  # normalized like the CRUD API
+        assert body["estado"] == "pendiente"
+
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.status_code == 200
+        assert len(listed.json()) == 1
+
+
+def test_iframe_create_with_wrong_key_returns_403_and_stores_nothing(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/iframe/reservas.json", params={"key": "nope"}, json=_payload()
+        )
+        assert response.status_code == 403
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json() == []
+
+
+def test_iframe_create_rejects_invalid_payload_and_stores_nothing(tmp_path):
+    """Same validation as the CRUD API: bad personas/fecha → 422, nothing stored."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        for bad in (_payload(personas=0), _payload(fecha="navidad"), _payload(nombre="")):
+            response = client.post(
+                "/iframe/reservas.json", params={"key": EMBED_KEY}, json=bad
+            )
+            assert response.status_code == 422, bad
+        listed = client.get(
+            "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert listed.json() == []
+
+
+def test_iframe_app_page_contains_create_form(tmp_path):
+    """Structural: the shell renders the register form (prefilled by JS)."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        for marker in (
+            'id="form-reserva"',
+            'name="fecha"',
+            'name="hora"',
+            'name="personas"',
+            'name="detalles"',
+            'name="nombre"',
+            'name="telefono"',
+        ):
+            assert marker in response.text, marker

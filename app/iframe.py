@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.db import get_session
 from app.models import Reserva
+from app.schemas import ReservaCreate
 
 router = APIRouter()
 
@@ -79,6 +80,42 @@ def iframe_app(request: Request, key: str = Query(default="")):
     )
 
 
+def _serialize(reserva: Reserva) -> dict:
+    return {
+        "nombre": reserva.nombre,
+        "telefono": reserva.telefono,
+        "fecha": reserva.fecha.isoformat(),
+        "hora": reserva.hora.strftime("%H:%M"),
+        "personas": reserva.personas,
+        "estado": reserva.estado,
+        "detalles": reserva.detalles,
+    }
+
+
+@router.post("/iframe/reservas.json", status_code=201, include_in_schema=False)
+def iframe_reservas_create(
+    request: Request,
+    payload: ReservaCreate,
+    key: str = Query(default=""),
+    session: Session = Depends(get_session),
+):
+    """Register a reservation from the Chatwoot tab (T9/L15).
+
+    Same schema/validation as the CRUD API, authorized by the embed key
+    instead of a JWT (the iframe cannot do cookie/token login). The form
+    in /iframe/app prefills nombre/telefono from the appContext contact.
+    """
+    settings: Settings = request.app.state.settings
+    headers = {"Content-Security-Policy": _frame_ancestors(settings)}
+    if not _autorizado(request, key):
+        return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
+    reserva = Reserva(**payload.model_dump())
+    session.add(reserva)
+    session.commit()
+    session.refresh(reserva)
+    return JSONResponse(_serialize(reserva), status_code=201, headers=headers)
+
+
 @router.get("/iframe/reservas.json", include_in_schema=False)
 def iframe_reservas_json(
     request: Request,
@@ -92,18 +129,7 @@ def iframe_reservas_json(
         return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
     reservas = _por_telefono(session, tel)
     return JSONResponse(
-        [
-            {
-                "nombre": r.nombre,
-                "telefono": r.telefono,
-                "fecha": r.fecha.isoformat(),
-                "hora": r.hora.strftime("%H:%M"),
-                "personas": r.personas,
-                "estado": r.estado,
-                "detalles": r.detalles,
-            }
-            for r in reservas
-        ],
+        [_serialize(r) for r in reservas],
         headers=headers,
     )
 
