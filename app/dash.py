@@ -269,7 +269,7 @@ def ajustes_submit(
 
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
-        reprogramar(scheduler, request.app.state, settings)
+        reprogramar(scheduler, request.app, settings)
 
     nueva = values["etiqueta_confirmada"]
     if _chatwoot_configurado(settings) and vieja != nueva:

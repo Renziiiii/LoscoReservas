@@ -837,3 +837,20 @@ def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeyp
         )
         assert response.status_code == 303
         assert response.headers["location"] == "/ajustes"
+
+
+# --- L26: guardar ajustes con el scheduler ACTIVO no debe crashear ---
+
+
+def test_post_ajustes_con_scheduler_activo_reprograma_sin_error(tmp_path):
+    """Pins the production crash: reprogramar() received request.app.state
+    instead of request.app — only reachable when scheduler_enabled=True."""
+    app = create_app(_settings(tmp_path, scheduler_enabled=True))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.post("/ajustes", data=FORM_DATA, follow_redirects=False)
+        assert response.status_code == 303, response.text
+        # the live scheduler now runs at the newly saved hours
+        jobs = {job.id: job for job in app.state.scheduler.get_jobs()}
+        assert str(jobs["confirmaciones_t48h"].trigger) == "cron[hour='10', minute='30']"
+        assert str(jobs["recordatorio_invitados"].trigger) == "cron[hour='18', minute='45']"
