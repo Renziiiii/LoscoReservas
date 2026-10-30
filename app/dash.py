@@ -7,6 +7,7 @@ and swap-in-place behavior via the HX-Request header.
 
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -255,7 +256,21 @@ def ajustes_plantillas(request: Request):
             settings.chatwoot_base_url, settings.chatwoot_api_token, settings.chatwoot_account_id
         )
         plantillas = chatwoot.plantillas_whatsapp()
-    except Exception as exc:  # transport/HTTP errors must not break the panel
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            return {
+                "plantillas": [],
+                "motivo": (
+                    "Chatwoot rechazó las credenciales (401): verificá el token de API "
+                    "(Chatwoot → Perfil → Token de acceso) y el account id (el número "
+                    "que aparece en la URL de Chatwoot después de /app/accounts/)."
+                ),
+            }
+        return {
+            "plantillas": [],
+            "motivo": f"Chatwoot respondió con error {exc.response.status_code}: {exc}",
+        }
+    except Exception as exc:  # transport errors must not break the panel
         return {"plantillas": [], "motivo": f"Chatwoot no respondió: {exc}"}
     if not plantillas:
         return {

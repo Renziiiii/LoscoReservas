@@ -365,3 +365,54 @@ def test_plantillas_json_error_de_chatwoot_no_rompe_el_panel(tmp_path, monkeypat
         body = response.json()
         assert body["plantillas"] == []
         assert "no respondió" in body["motivo"]
+
+
+# --- L22: selector real de plantillas + pista accionable para el 401 ---
+
+
+def test_ajustes_page_contiene_selectores_de_plantillas(client):
+    """L22: the datalist was not perceived as a selector — the page must ship
+    a real <select> per template field (populated by JS from Chatwoot)."""
+    response = client.get("/ajustes")
+    assert response.status_code == 200
+    for marker in ('id="sel-plantilla-conf"', 'id="sel-plantilla-inv"'):
+        assert marker in response.text, marker
+
+
+def test_plantillas_json_401_da_pista_de_credenciales(tmp_path, monkeypatch):
+    """A 401 from Chatwoot must name the likely causes (token / account id),
+    not just echo the HTTP error."""
+    import httpx as _httpx
+
+    request = _httpx.Request("GET", "http://cw.test/api/v1/accounts/1/inboxes")
+    response = _httpx.Response(401, request=request)
+    error = _httpx.HTTPStatusError(
+        "Client error '401 Unauthorized' for url '...'", request=request, response=response
+    )
+    app, _ = _app_configurado(tmp_path, monkeypatch, error=error)
+    with TestClient(app) as client:
+        _cookie_login(client)
+        body = client.get("/ajustes/plantillas.json").json()
+        assert body["plantillas"] == []
+        assert "401" in body["motivo"]
+        assert "token" in body["motivo"].lower()
+        assert "account id" in body["motivo"].lower()
+
+
+def test_chatwoot_client_envia_ambos_headers_de_auth():
+    """Classic api_access_token + Bearer (v4.19+): eliminates the auth-scheme
+    variable when diagnosing a 401."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"payload": []})
+
+    from app.chatwoot import ChatwootClient
+
+    ChatwootClient(
+        base_url="http://chatwoot.test", api_token="token-x", account_id=1,
+        transport=httpx.MockTransport(handler),
+    ).listar_inboxes()
+    assert seen["headers"]["api_access_token"] == "token-x"
+    assert seen["headers"]["authorization"] == "Bearer token-x"

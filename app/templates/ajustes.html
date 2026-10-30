@@ -13,7 +13,8 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
     {% if errors.hora_confirmacion %}<span class="error">{{ errors.hora_confirmacion }}</span>{% endif %}
   </label>
   <label>Plantilla de WhatsApp
-    <input type="text" name="plantilla_confirmacion" required maxlength="120" list="plantillas-wsp"
+    <select id="sel-plantilla-conf" style="display:none"></select>
+    <input type="text" name="plantilla_confirmacion" id="in-plantilla-conf" required maxlength="120"
       value="{{ values.plantilla_confirmacion if values.plantilla_confirmacion is defined else config.plantilla_confirmacion }}">
     {% if errors.plantilla_confirmacion %}<span class="error">{{ errors.plantilla_confirmacion }}</span>{% endif %}
   </label>
@@ -25,29 +26,49 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
     {% if errors.hora_invitados %}<span class="error">{{ errors.hora_invitados }}</span>{% endif %}
   </label>
   <label>Plantilla de WhatsApp
-    <input type="text" name="plantilla_invitados" required maxlength="120" list="plantillas-wsp"
+    <select id="sel-plantilla-inv" style="display:none"></select>
+    <input type="text" name="plantilla_invitados" id="in-plantilla-inv" required maxlength="120"
       value="{{ values.plantilla_invitados if values.plantilla_invitados is defined else config.plantilla_invitados }}">
     {% if errors.plantilla_invitados %}<span class="error">{{ errors.plantilla_invitados }}</span>{% endif %}
   </label>
 
-  <datalist id="plantillas-wsp"></datalist>
   <p id="plantillas-estado" class="muted">Cargando plantillas de Chatwoot…</p>
   <script>
+    function activarSelector(selectId, inputId, plantillas) {
+      var select = document.getElementById(selectId);
+      var input = document.getElementById(inputId);
+      select.innerHTML = "";
+      var actual = input.value;
+      var nombres = plantillas.map(function (p) { return p.name; });
+      if (actual && nombres.indexOf(actual) === -1) {
+        var optActual = document.createElement("option");
+        optActual.value = actual;
+        optActual.textContent = actual + " (valor actual, no está en Chatwoot)";
+        select.appendChild(optActual);
+      }
+      plantillas.forEach(function (p) {
+        var opt = document.createElement("option");
+        opt.value = p.name;
+        opt.textContent = p.name + " — " + [p.status, p.category, p.language].filter(Boolean).join(" · ");
+        select.appendChild(opt);
+      });
+      if (actual) { select.value = actual; }
+      select.style.display = "block";
+      input.style.display = "none";
+      input.required = false;  // the select now guarantees a value
+      select.addEventListener("change", function () { input.value = select.value; });
+    }
+
     fetch('/ajustes/plantillas.json')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var dl = document.getElementById('plantillas-wsp');
-        (data.plantillas || []).forEach(function (p) {
-          var opt = document.createElement('option');
-          opt.value = p.name;
-          opt.label = [p.status, p.category, p.language].filter(Boolean).join(' · ');
-          dl.appendChild(opt);
-        });
         var estado = document.getElementById('plantillas-estado');
         if (data.motivo) {
           estado.textContent = data.motivo;
         } else {
           estado.textContent = data.plantillas.length + ' plantillas de WhatsApp cargadas desde Chatwoot.';
+          activarSelector('sel-plantilla-conf', 'in-plantilla-conf', data.plantillas);
+          activarSelector('sel-plantilla-inv', 'in-plantilla-inv', data.plantillas);
         }
       })
       .catch(function () {

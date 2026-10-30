@@ -32,7 +32,12 @@ class ChatwootClient:
         self._account_id = account_id
         self._http = httpx.Client(
             base_url=base_url,
-            headers={"api_access_token": api_token},
+            headers={
+                "api_access_token": api_token,
+                # Bearer is supported from Chatwoot v4.19; sending both
+                # eliminates the auth-scheme variable (L22).
+                "Authorization": f"Bearer {api_token}",
+            },
             transport=transport,
             timeout=15,
         )
