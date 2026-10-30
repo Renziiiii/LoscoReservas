@@ -162,6 +162,10 @@ def test_iframe_app_page_is_static_shell_with_key(tmp_path):
         assert response.status_code == 200
         assert "appContext" in response.text
         assert "reservas.json" in response.text
+        # Chatwoot delivers the context as a JSON string; the page must parse
+        # it AND be able to request it on demand (chatwoot-dashboard-app:fetch-info).
+        assert "JSON.parse(event.data)" in response.text
+        assert "chatwoot-dashboard-app:fetch-info" in response.text
         csp = response.headers.get("content-security-policy", "")
         assert "frame-ancestors" in csp
 

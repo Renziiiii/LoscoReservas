@@ -31,8 +31,22 @@
     // fetch; it never needs to be hardcoded in the source.
     const key = new URLSearchParams(window.location.search).get("key") || "";
 
+    // Chatwoot Dashboard Apps deliver the conversation/contact context as a
+    // window message. Per the official docs the payload arrives as a JSON
+    // STRING, so it must be parsed; object payloads are accepted too.
+    // On load we also ask for the context on demand in case Chatwoot already
+    // sent it before this listener was attached.
+    window.parent.postMessage("chatwoot-dashboard-app:fetch-info", "*");
+
     window.addEventListener("message", (event) => {
-      const data = event.data;
+      let data = event.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(event.data);
+        } catch (e) {
+          return; // not a JSON message meant for us
+        }
+      }
       if (!data || data.event !== "appContext" || !data.data) return;
       const contact = data.data.contact || {};
       const tel = contact.phone_number || contact.phone || "";
