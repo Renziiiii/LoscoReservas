@@ -13,7 +13,7 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
     {% if errors.hora_confirmacion %}<span class="error">{{ errors.hora_confirmacion }}</span>{% endif %}
   </label>
   <label>Plantilla de WhatsApp
-    <input type="text" name="plantilla_confirmacion" required maxlength="120"
+    <input type="text" name="plantilla_confirmacion" required maxlength="120" list="plantillas-wsp"
       value="{{ values.plantilla_confirmacion if values.plantilla_confirmacion is defined else config.plantilla_confirmacion }}">
     {% if errors.plantilla_confirmacion %}<span class="error">{{ errors.plantilla_confirmacion }}</span>{% endif %}
   </label>
@@ -25,10 +25,36 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
     {% if errors.hora_invitados %}<span class="error">{{ errors.hora_invitados }}</span>{% endif %}
   </label>
   <label>Plantilla de WhatsApp
-    <input type="text" name="plantilla_invitados" required maxlength="120"
+    <input type="text" name="plantilla_invitados" required maxlength="120" list="plantillas-wsp"
       value="{{ values.plantilla_invitados if values.plantilla_invitados is defined else config.plantilla_invitados }}">
     {% if errors.plantilla_invitados %}<span class="error">{{ errors.plantilla_invitados }}</span>{% endif %}
   </label>
+
+  <datalist id="plantillas-wsp"></datalist>
+  <p id="plantillas-estado" class="muted">Cargando plantillas de Chatwoot…</p>
+  <script>
+    fetch('/ajustes/plantillas.json')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var dl = document.getElementById('plantillas-wsp');
+        (data.plantillas || []).forEach(function (p) {
+          var opt = document.createElement('option');
+          opt.value = p.name;
+          opt.label = [p.status, p.category, p.language].filter(Boolean).join(' · ');
+          dl.appendChild(opt);
+        });
+        var estado = document.getElementById('plantillas-estado');
+        if (data.motivo) {
+          estado.textContent = data.motivo;
+        } else {
+          estado.textContent = data.plantillas.length + ' plantillas de WhatsApp cargadas desde Chatwoot.';
+        }
+      })
+      .catch(function () {
+        document.getElementById('plantillas-estado').textContent =
+          'No se pudieron cargar las plantillas: escribí el nombre a mano.';
+      });
+  </script>
 
   <button class="btn primary" type="submit">Guardar ajustes</button>
 </form>

@@ -21,6 +21,7 @@ from app.auth import (
     oauth2_scheme,
 )
 from app.ajustes import obtener_configuracion
+from app.chatwoot import ChatwootClient
 from app.db import get_session
 from app.models import Reserva
 from app.schemas import ReservaCreate
@@ -228,6 +229,46 @@ def ajustes_submit(
     if scheduler is not None:
         reprogramar(scheduler, request.app.state, settings)
     return RedirectResponse("/ajustes", status_code=303)
+
+
+@router.get("/ajustes/plantillas.json")
+def ajustes_plantillas(request: Request):
+    """WhatsApp templates from the Chatwoot API (L20) for the /ajustes
+    datalist. Fail-soft: never breaks the page, always returns a motivo."""
+    settings = request.app.state.settings
+    if not (
+        settings.chatwoot_base_url
+        and settings.chatwoot_api_token
+        and settings.chatwoot_account_id
+    ):
+        return {
+            "plantillas": [],
+            "motivo": "Chatwoot no está configurado (faltan URL, token o account id en el entorno). Se puede escribir el nombre de la plantilla a mano.",
+        }
+    try:
+        chatwoot = ChatwootClient(
+            settings.chatwoot_base_url, settings.chatwoot_api_token, settings.chatwoot_account_id
+        )
+        plantillas = chatwoot.plantillas_whatsapp()
+    except Exception as exc:  # transport/HTTP errors must not break the panel
+        return {"plantillas": [], "motivo": f"Chatwoot no respondió: {exc}"}
+    if not plantillas:
+        return {
+            "plantillas": [],
+            "motivo": "El inbox de WhatsApp no tiene plantillas sincronizadas. Sincronizalas en Chatwoot (Configuración del inbox) o escribí el nombre a mano.",
+        }
+    return {
+        "plantillas": [
+            {
+                "name": p.get("name"),
+                "status": p.get("status"),
+                "category": p.get("category"),
+                "language": p.get("language"),
+            }
+            for p in plantillas
+        ],
+        "motivo": None,
+    }
 
 
 @router.post("/reservas/{reserva_id}/eliminar")

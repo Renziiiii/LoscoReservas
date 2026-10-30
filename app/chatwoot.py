@@ -53,6 +53,39 @@ class ChatwootClient:
         data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/conversations")
         return data.get("payload") or []
 
+    def listar_inboxes(self) -> list[dict]:
+        """All inboxes of the account (used to auto-detect the WhatsApp one)."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/inboxes")
+        return data.get("payload") or []
+
+    def listar_plantillas(self, inbox_id: int) -> list[dict]:
+        """Cached WhatsApp templates of one inbox (L20: PR #15277).
+        422 if the inbox is not a WhatsApp (native or Twilio) inbox."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/inboxes/{inbox_id}/message_templates")
+        return data.get("payload") or []
+
+    def plantillas_whatsapp(self) -> list[dict]:
+        """Templates of the first inbox that answers, preferring native
+        WhatsApp (Channel::Whatsapp), then Twilio, then anything else:
+        non-WhatsApp inboxes answer 422 and are skipped."""
+
+        def prioridad(inbox: dict) -> int:
+            channel = inbox.get("channel_type") or ""
+            if channel.endswith("Whatsapp"):
+                return 0
+            if channel.endswith("Twilio"):
+                return 1
+            return 2
+
+        for inbox in sorted(self.listar_inboxes(), key=prioridad):
+            try:
+                return self.listar_plantillas(inbox["id"])
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 422:
+                    continue  # not a WhatsApp inbox: try the next one
+                raise
+        return []
+
     def conversacion_abierta(self, telefono: str) -> dict:
         """Open conversation for a phone, or raises NoHayConversacion."""
         contacto = self.buscar_contacto(telefono)

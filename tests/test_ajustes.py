@@ -214,3 +214,154 @@ def test_job_uses_db_template_at_run_time(tmp_path, monkeypatch):
 
     _job_confirmaciones(app)()
     assert captured["plantilla"] == "plantilla_db"
+
+
+# --- T13: listar plantillas de WhatsApp desde Chatwoot (L19/L20) ---
+
+import httpx
+
+from app.chatwoot import ChatwootClient
+
+
+class ChatwootPlantillasFake:
+    """MockTransport-backed Chatwoot with canned inboxes + templates."""
+
+    def __init__(self, inboxes=None, plantillas_por_inbox=None):
+        self.requests = []
+        self.inboxes = inboxes or []
+        self.plantillas_por_inbox = plantillas_por_inbox or {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append((request.method, request.url.path))
+            path = request.url.path
+            if path.endswith("/inboxes") and "/accounts/" in path:
+                return httpx.Response(200, json={"payload": self.inboxes})
+            if "/message_templates" in path:
+                inbox_id = int(path.split("/")[-2])
+                if inbox_id in self.plantillas_por_inbox:
+                    return httpx.Response(
+                        200, json={"payload": self.plantillas_por_inbox[inbox_id]}
+                    )
+                return httpx.Response(422, json={})  # not a WhatsApp inbox
+            return httpx.Response(404, json={})
+
+        self.transport = httpx.MockTransport(handler)
+
+    def client(self):
+        return ChatwootClient(
+            base_url="http://chatwoot.test", api_token="token-x", account_id=1,
+            transport=self.transport,
+        )
+
+
+PLANTILLAS = [
+    {"name": "reserva_confirmacion", "status": "approved", "category": "UTILITY", "language": "es"},
+    {"name": "invitados_confirmacion", "status": "approved", "category": "UTILITY", "language": "es"},
+]
+
+
+def test_plantillas_whatsapp_prefiere_inbox_whatsapp_nativo():
+    fake = ChatwootPlantillasFake(
+        inboxes=[
+            {"id": 2, "channel_type": "Channel::Twilio"},
+            {"id": 5, "channel_type": "Channel::Whatsapp"},
+        ],
+        plantillas_por_inbox={5: PLANTILLAS, 2: [{"name": "de_twilio"}]},
+    )
+    plantillas = fake.client().plantillas_whatsapp()
+    assert [p["name"] for p in plantillas] == [
+        "reserva_confirmacion", "invitados_confirmacion",
+    ]
+    # only the native WhatsApp inbox was queried (priority short-circuit)
+    template_requests = [p for m, p in fake.requests if "message_templates" in p]
+    assert template_requests == ["/api/v1/accounts/1/inboxes/5/message_templates"]
+
+
+def test_plantillas_whatsapp_salta_inboxes_que_no_son_de_whatsapp():
+    fake = ChatwootPlantillasFake(
+        inboxes=[
+            {"id": 1, "channel_type": "Channel::WebWidget"},
+            {"id": 2, "channel_type": "Channel::Twilio"},
+        ],
+        plantillas_por_inbox={2: PLANTILLAS},  # inbox 1 -> 422
+    )
+    plantillas = fake.client().plantillas_whatsapp()
+    assert [p["name"] for p in plantillas] == ["reserva_confirmacion", "invitados_confirmacion"]
+
+
+def test_plantillas_whatsapp_vacio_si_no_hay_inboxes():
+    fake = ChatwootPlantillasFake(inboxes=[])
+    assert fake.client().plantillas_whatsapp() == []
+
+
+def _app_configurado(tmp_path, monkeypatch, plantillas=None, error=None):
+    captured = {}
+
+    class FakeChatwootClient:
+        def __init__(self, base_url, api_token, account_id):
+            captured["creds"] = (base_url, api_token, account_id)
+
+        def plantillas_whatsapp(self):
+            if error is not None:
+                raise error
+            return plantillas if plantillas is not None else PLANTILLAS
+
+    monkeypatch.setattr("app.dash.ChatwootClient", FakeChatwootClient)
+    app = create_app(_settings(tmp_path, chatwoot_base_url="http://cw.test",
+                               chatwoot_api_token="tok", chatwoot_account_id=3))
+    return app, captured
+
+
+def _cookie_login(client):
+    response = client.post(
+        "/login", data={"username": "valen", "password": "testpass123"}, follow_redirects=False
+    )
+    assert response.status_code == 303
+
+
+def test_plantillas_json_anonimo_redirige_a_login(anon_client):
+    response = anon_client.get("/ajustes/plantillas.json", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_plantillas_json_sin_chatwoot_configurado_indica_motivo(client):
+    response = client.get("/ajustes/plantillas.json")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plantillas"] == []
+    assert "no está configurado" in body["motivo"]
+
+
+def test_plantillas_json_devuelve_plantillas_de_chatwoot(tmp_path, monkeypatch):
+    app, captured = _app_configurado(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.get("/ajustes/plantillas.json")
+        assert response.status_code == 200
+        body = response.json()
+        assert [p["name"] for p in body["plantillas"]] == [
+            "reserva_confirmacion", "invitados_confirmacion",
+        ]
+        assert body["motivo"] is None
+        assert captured["creds"] == ("http://cw.test", "tok", 3)
+
+
+def test_plantillas_json_inbox_sin_plantillas_indica_motivo(tmp_path, monkeypatch):
+    app, _ = _app_configurado(tmp_path, monkeypatch, plantillas=[])
+    with TestClient(app) as client:
+        _cookie_login(client)
+        body = client.get("/ajustes/plantillas.json").json()
+        assert body["plantillas"] == []
+        assert "no tiene plantillas" in body["motivo"]
+
+
+def test_plantillas_json_error_de_chatwoot_no_rompe_el_panel(tmp_path, monkeypatch):
+    app, _ = _app_configurado(tmp_path, monkeypatch, error=RuntimeError("boom"))
+    with TestClient(app) as client:
+        _cookie_login(client)
+        response = client.get("/ajustes/plantillas.json")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["plantillas"] == []
+        assert "no respondió" in body["motivo"]
