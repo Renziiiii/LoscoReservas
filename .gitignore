@@ -1,4 +1,5 @@
 __pycache__/
+odd/
 *.pyc
 .venv/
 data/
