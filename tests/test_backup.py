@@ -24,7 +24,9 @@ def _run(*args: str) -> subprocess.CompletedProcess:
 
 
 def _make_db(path: Path, rows: int = 3) -> None:
+    # WAL como la base real de producción (así hereda el header el backup).
     con = sqlite3.connect(path)
+    con.execute("PRAGMA journal_mode=WAL")
     con.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
     con.executemany("INSERT INTO t (v) VALUES (?)", [(f"v{i}",) for i in range(rows)])
     con.commit()
@@ -70,3 +72,17 @@ def test_backup_db_inexistente_falla_limpio(tmp_path):
     assert not out.exists() or not list(out.glob("reservas-*.db")), (
         "no debe crear backups de una base inexistente"
     )
+
+
+def test_backup_no_deja_sidecars_wal_en_el_destino(tmp_path):
+    """El integrity check abre la copia en modo WAL (header heredado) y puede
+    dejar -shm/-wal vacíos al lado; el backup debe quedar como UN solo archivo."""
+    db = tmp_path / "reservas.db"
+    _make_db(db)
+    out = tmp_path / "backups"
+
+    r = _run("--db", str(db), "--out", str(out))
+
+    assert r.returncode == 0, r.stderr
+    assert list(out.glob("*.db-wal")) == [], "no debe quedar sidecar -wal"
+    assert list(out.glob("*.db-shm")) == [], "no debe quedar sidecar -shm"

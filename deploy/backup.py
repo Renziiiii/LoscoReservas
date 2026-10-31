@@ -65,6 +65,11 @@ def main() -> int:
         resultado = check.execute("PRAGMA integrity_check").fetchone()[0]
     finally:
         check.close()
+    # El check abre la copia en modo WAL (el header se hereda de la base
+    # origen) y eso crea sidecars -shm/-wal vacíos junto al backup: se
+    # limpian para que cada backup sea UN solo archivo autocontenido.
+    for sidecar in (Path(f"{dest}-wal"), Path(f"{dest}-shm")):
+        sidecar.unlink(missing_ok=True)
     if resultado != "ok":
         print(f"ERROR: integridad de {dest}: {resultado}", file=sys.stderr)
         dest.unlink()
