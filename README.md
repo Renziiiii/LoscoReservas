@@ -75,7 +75,9 @@ uvicorn app.main:app --reload     # http://localhost:8000/docs
 > Nota: el iframe embebido en Chatwoot requiere que la app sea alcanzable
 > por HTTPS desde el navegador del agente (Chatwoot Dashboard Apps carga
 > la URL tal cual la configuraste). Para probarlo completo necesitás un
-> reverse proxy con TLS (nginx + certbot) apuntando al puerto 8010.
+> reverse proxy con TLS (nginx + certbot) apuntando al puerto 8010 — el
+> compose publica solo en `127.0.0.1:8010` justamente para eso. En
+> producción (LoscoServer) ya está armado: ver **docs/losco-server.md**.
 
 ## Autenticación
 

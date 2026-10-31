@@ -1,12 +1,27 @@
+name: losco-reservas
+
 services:
   reservas:
     build: .
     container_name: losco-reservas
     restart: unless-stopped
+    # Solo localhost: la app se publica por el reverse proxy (nginx) del host,
+    # nunca directa a internet (mismo patrón que chatwoot-rails en 127.0.0.1:3000).
     ports:
-      - "8010:8000"
+      - "127.0.0.1:8010:8000"
+    # Named volume: Docker le aplica los permisos del /data de la imagen
+    # (usuario reservas), a diferencia de un bind mount creado por root.
     volumes:
-      - ./data:/data
+      - reservas-data:/data
+    # .env opcional (producción lo usa para TODO el resto de la config,
+    # ver env.example); si no existe, valen los defaults de la app.
+    env_file:
+      - path: .env
+        required: false
     environment:
+      # Absoluto SIEMPRE: relativo rompe en el contenedor (ver docs/dokploy.md).
       LOSCO_DATABASE_PATH: /data/reservas.db
       LOSCO_TZ: America/Argentina/Buenos_Aires
+
+volumes:
+  reservas-data:
