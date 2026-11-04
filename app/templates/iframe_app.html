@@ -6,6 +6,7 @@
   <title>Losco — Reservas del contacto</title>
   <style>
     :root {
+      color-scheme: dark;
       --bg: #111113;
       --surface: #18191b;
       --border-subtle: #212225;
@@ -21,6 +22,48 @@
       --warn-bg: #302008;
       --ok: #12a594;
       --ok-bg: #0d2d2a;
+    }
+    /* Light palette: applied when the OS/browser prefers light and the page
+       has no explicit theme, or when Chatwoot reports theme:"light" in the
+       appContext (the JS sets data-theme on <html>). Chatwoot dark stays the
+       default because the slate palette matches it. */
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme]) {
+        color-scheme: light;
+        --bg: #f4f4f5;
+        --surface: #ffffff;
+        --border-subtle: #e4e4e7;
+        --border-strong: #d4d4d8;
+        --text: #18181b;
+        --text-secondary: #52525b;
+        --muted: #71717a;
+        --accent: #1f93ff;
+        --accent-hover: #1976d2;
+        --danger: #d92d4e;
+        --danger-bg: #fdecef;
+        --warn: #b45309;
+        --warn-bg: #fef3c7;
+        --ok: #0f766e;
+        --ok-bg: #d9f2ef;
+      }
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f4f4f5;
+      --surface: #ffffff;
+      --border-subtle: #e4e4e7;
+      --border-strong: #d4d4d8;
+      --text: #18181b;
+      --text-secondary: #52525b;
+      --muted: #71717a;
+      --accent: #1f93ff;
+      --accent-hover: #1976d2;
+      --danger: #d92d4e;
+      --danger-bg: #fdecef;
+      --warn: #b45309;
+      --warn-bg: #fef3c7;
+      --ok: #0f766e;
+      --ok-bg: #d9f2ef;
     }
     * { box-sizing: border-box; }
     body {
@@ -194,6 +237,13 @@
         }
       }
       if (!data || data.event !== "appContext" || !data.data) return;
+      // Chatwoot includes its UI theme in the context and re-sends this event
+      // when the agent toggles dark/light — follow it live. Older versions
+      // omit it; then the prefers-color-scheme media query decides.
+      const theme = data.data.theme;
+      if (theme === "light" || theme === "dark") {
+        document.documentElement.dataset.theme = theme;
+      }
       const contact = data.data.contact || {};
       const tel = contact.phone_number || contact.phone || "";
       if (!tel) {

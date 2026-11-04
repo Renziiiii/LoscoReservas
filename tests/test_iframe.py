@@ -455,6 +455,39 @@ def test_iframe_app_page_has_edit_delete_and_dark_theme(tmp_path):
         assert "#111113" in text
 
 
+def test_iframe_app_page_supports_light_theme_with_auto_detection(tmp_path):
+    """The tab ships a light palette next to the dark one: CSS picks it via
+    prefers-color-scheme, and the JS applies Chatwoot's appContext theme
+    (data-theme) when the payload includes it, so the iframe follows the
+    agent's Chatwoot mode live."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        text = response.text
+        assert "#111113" in text  # dark stays the default palette
+        assert "prefers-color-scheme: light" in text
+        assert '[data-theme="light"]' in text
+        assert re.search(r"--bg:\s*#f4f4f5", text)
+        assert "data.data.theme" in text
+        assert "documentElement.dataset.theme" in text
+
+
+def test_iframe_debug_page_supports_light_and_dark_theme(tmp_path):
+    """The direct-link page (/iframe/reservas) carries both palettes too,
+    selected purely by media query (it receives no appContext)."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get(
+            "/iframe/reservas", params={"tel": "5491155551234", "key": EMBED_KEY}
+        )
+        assert response.status_code == 200
+        text = response.text
+        assert "#111113" in text
+        assert "prefers-color-scheme: light" in text
+        assert re.search(r"--bg:\s*#f4f4f5", text)
+
+
 # --- T10 fixes: estado editable + bug de shadowing + delegación de eventos ---
 
 

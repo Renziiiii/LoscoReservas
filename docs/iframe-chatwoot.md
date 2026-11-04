@@ -31,8 +31,13 @@ La pestaña permite **gestionar las reservas del contacto sin salir de
 Chatwoot**: el formulario nace pre-cargado con el nombre y teléfono del
 contacto de la conversación (vienen en el `appContext`), el agente completa
 fecha, hora, personas y detalles, y desde cada fila puede editar o eliminar
-la reserva. La interfaz usa un **tema oscuro fijo emparejado a Chatwoot**
-(paleta slate dark + acento brand `#1f93ff`, estados amber/teal/ruby).
+la reserva. La interfaz **se empareja sola al tema de Chatwoot** (claro u
+oscuro): la paleta oscura (slate dark + acento brand `#1f93ff`, estados
+amber/teal/ruby) es el default, y la clara se activa por
+`prefers-color-scheme` o — en las versiones de Chatwoot que lo envían — por
+el campo `theme` del `appContext`, que tiene prioridad sobre la media query.
+Chatwoot reenvía el `appContext` cuando el agente cambia de modo, así que el
+iframe cambia de tema en vivo sin recargar.
 
 La clave viaja en la URL de la página configurada y se reutiliza para el
 fetch de datos; no se hardcodea en el fuente. Sin clave configurada, todo
@@ -67,6 +72,11 @@ producción).
   `chatwoot-dashboard-app:fetch-info` al cargar para pedir el contexto bajo
   demanda (mecanismo documentado) — cubre el caso en que Chatwoot manda el
   contexto antes de que el listener esté attachado.
+- **El `appContext` incluye `theme` (`"dark"`/`"light"`)**: lo confirma el
+  fuente de Chatwoot (`app/javascript/dashboard/components/widgets/DashboardApp/Frame.vue`),
+  que toma el tema de la clase `dark` en `<body>` y reenvía el contexto
+  cuando cambia (MutationObserver). Las versiones viejas que no lo mandan
+  caen en la media query `prefers-color-scheme`.
 
 - El match del teléfono es **por dígitos**: Chatwoot manda E.164
   (`+54911…`) y nuestras reservas guardan el formato original — ambos
