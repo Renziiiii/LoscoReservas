@@ -17,7 +17,8 @@ iframe de reservas por contacto dentro de Chatwoot.
   (horas y plantillas se configuran en el panel, `/ajustes`, sin reiniciar
   el contenedor). Consciente del canal: WhatsApp envía SIEMPRE la plantilla
   UTILITY seleccionada, tal cual está aprobada en Meta — mensaje fijo, sin
-  variables (el panel avisa si la plantilla elegida tiene variables);
+  variables, y en Chatwoot se muestra ese mismo texto (el panel avisa si la
+  plantilla elegida tiene variables);
   Instagram/Messenger usan texto libre dentro de la ventana de 24hs y fuera
   de ella no permiten mensajes iniciados por el negocio (se registra la
   falla). Cada reserva puede excluirse de los recordatorios (checkbox
