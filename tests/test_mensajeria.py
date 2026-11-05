@@ -139,10 +139,13 @@ def test_whatsapp_fuera_de_ventana_envia_plantilla(client):
     template_params = bodies[0]["content_attributes"]["template_params"]
     assert template_params["name"] == "reserva_confirmacion"
     assert template_params["category"] == "UTILITY"
+    assert template_params["processed_params"] == {}  # fixed message (L39)
     assert report["enviados"] == [1]
 
 
-def test_whatsapp_dentro_de_ventana_envia_texto_libre(client):
+def test_whatsapp_dentro_de_ventana_envia_plantilla(client):
+    """L39: WhatsApp ALWAYS sends the selected template — even inside the
+    24h window — as a fixed message (empty processed_params)."""
     crear(client)
     fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[whatsapp_conversation(1)])
     report = enviar_confirmaciones(
@@ -153,18 +156,22 @@ def test_whatsapp_dentro_de_ventana_envia_texto_libre(client):
     )
     bodies = _posted_bodies(fake)
     assert len(bodies) == 1
-    assert "template_params" not in bodies[0]["content_attributes"]
-    assert "Juan Pérez" in bodies[0]["content"]
+    template_params = bodies[0]["content_attributes"]["template_params"]
+    assert template_params["name"] == "reserva_confirmacion"
+    assert template_params["category"] == "UTILITY"
+    assert template_params["processed_params"] == {}
     assert report["enviados"] == [1]
 
 
 def test_instagram_dentro_de_ventana_envia_texto_libre(client):
+    """IG keeps free text inside the window; the activity timestamp is the
+    TOP-LEVEL last_activity_at that Chatwoot 4.17.x actually returns (L38-4)."""
     crear(client)
     ig = {
         "id": 66,
         "status": "open",
-        "meta": {"channel": "Channel::Instagram", "last_non_activity_message_at": int(
-            (datetime.now(UTC) - timedelta(hours=2)).timestamp())},
+        "meta": {"channel": "Channel::Instagram"},
+        "last_activity_at": int((datetime.now(UTC) - timedelta(hours=2)).timestamp()),
     }
     fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[ig])
     report = enviar_confirmaciones(

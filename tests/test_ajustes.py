@@ -258,8 +258,20 @@ class ChatwootPlantillasFake:
 
 
 PLANTILLAS = [
-    {"name": "reserva_confirmacion", "status": "approved", "category": "UTILITY", "language": "es"},
-    {"name": "invitados_confirmacion", "status": "approved", "category": "UTILITY", "language": "es"},
+    {
+        "name": "reserva_confirmacion",
+        "status": "approved",
+        "category": "UTILITY",
+        "language": "es",
+        "components": [{"type": "BODY", "text": "Hola! Te escribimos por tu reserva"}],
+    },
+    {
+        "name": "invitados_confirmacion",
+        "status": "approved",
+        "category": "UTILITY",
+        "language": "es",
+        "components": [{"type": "BODY", "text": "Hola {{1}}, tu reserva del {{2}} a las {{3}} para {{4}}"}],
+    },
 ]
 
 
@@ -348,6 +360,25 @@ def test_plantillas_json_devuelve_plantillas_de_chatwoot(tmp_path, monkeypatch):
         ]
         assert body["motivo"] is None
         assert captured["creds"] == ("http://cw.test", "tok", 3)
+
+
+def test_plantillas_json_marca_variables_de_cada_plantilla(tmp_path, monkeypatch):
+    """L39: the selector must warn about templates with variables — the
+    endpoint reports the {{N}} placeholder count of each template's BODY."""
+    app, _ = _app_configurado(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        _cookie_login(client)
+        body = client.get("/ajustes/plantillas.json").json()
+        por_nombre = {p["name"]: p["variables"] for p in body["plantillas"]}
+        assert por_nombre == {"reserva_confirmacion": 0, "invitados_confirmacion": 4}
+
+
+def test_ajustes_explica_envio_de_mensaje_fijo(client):
+    """L39: the panel states that automatic sends are fixed templates
+    (sin variables)."""
+    response = client.get("/ajustes")
+    assert response.status_code == 200
+    assert "sin variables" in response.text
 
 
 def test_plantillas_json_inbox_sin_plantillas_indica_motivo(tmp_path, monkeypatch):

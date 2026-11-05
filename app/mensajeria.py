@@ -5,6 +5,10 @@
 - Same day, sent at the configured hour (Valen: "Entre as 17 y 18"):
   message confirming the guest count.
 
+Channel rules (L7/L39): WhatsApp always receives the fixed UTILITY template
+selected in /ajustes (sent verbatim, no params — 0-variable templates only);
+IG/Messenger get free text inside the 24h window.
+
 Every send is idempotent per reservation via *_enviada_at timestamps, so the
 daily cron can run safely any number of times.
 """
@@ -60,15 +64,6 @@ def _texto_invitados(reserva: Reserva) -> str:
     )
 
 
-def _plantilla_params(reserva: Reserva) -> dict:
-    return {
-        "1": reserva.nombre,
-        "2": reserva.fecha.strftime("%d/%m"),
-        "3": reserva.hora.strftime("%H:%M"),
-        "4": str(reserva.personas),
-    }
-
-
 def _enviar_lote(
     session: Session,
     chatwoot: ChatwootClient,
@@ -86,7 +81,6 @@ def _enviar_lote(
                 conversacion,
                 texto=texto_fn(reserva),
                 plantilla=plantilla,
-                plantilla_params=_plantilla_params(reserva),
             )
             setattr(reserva, columna_enviada.name, datetime.now(UTC))
             report["enviados"].append(reserva.id)

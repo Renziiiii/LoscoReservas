@@ -1,17 +1,21 @@
 """Chatwoot API client (agent token, API v1).
 
-Multi-channel reality (L7): Chatwoot serves WhatsApp, Instagram and Messenger.
-Meta's rules differ per channel:
-- WhatsApp: outside the 24h customer-service window, only approved templates
-  (UTILITY for reservation confirmations) may be sent.
+Multi-channel reality (L7/L39): Chatwoot serves WhatsApp, Instagram and
+Messenger, and the send rules differ per channel:
+- WhatsApp: ALWAYS the approved UTILITY template selected in /ajustes, sent
+  verbatim as a fixed message — no processed_params (L39: the app only
+  supports 0-variable templates, and Meta charges a utility template the
+  same as a session message, so free text has no advantage).
 - Instagram/Messenger: free text inside the 24h window; there are no approved
   templates for business-initiated messages, so outside the window we cannot
   send anything.
 
-The exact template_params shape is documented at developers.chatwoot.com
-(create new message); it must be verified live against the real server in T7.
+The template_params shape (name/category/processed_params) was verified live
+against production Chatwoot 4.17 (L37); the empty-processed_params fixed
+template shape is verified in the post-deploy end-to-end run (L39).
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -25,6 +29,16 @@ class NoHayConversacion(Exception):
 
 class FueraDeVentana(Exception):
     """Channel cannot receive business-initiated free text or templates."""
+
+
+def variables_plantilla(plantilla: dict) -> int:
+    """Number of {{N}} placeholders in the BODY of a cached WhatsApp
+    template (L39). The app sends templates verbatim as fixed messages, so
+    only 0-variable templates are compatible; /ajustes warns on the rest."""
+    for componente in plantilla.get("components") or []:
+        if (componente.get("type") or "").upper() == "BODY":
+            return len(re.findall(r"\{\{\d+\}\}", str(componente.get("text") or "")))
+    return 0
 
 
 class ChatwootClient:
@@ -143,8 +157,8 @@ class ChatwootClient:
         ]
         if not abiertas:
             raise NoHayConversacion(f"sin conversación abierta para {telefono}")
-        # most recently active open conversation wins
-        return max(abiertas, key=lambda c: c.get("last_non_activity_message_at") or 0)
+        # most recently active open conversation wins (top-level field, L38-4)
+        return max(abiertas, key=lambda c: self._ts_ultima_actividad(c) or 0)
 
     # --- channel awareness ---
 
@@ -153,11 +167,27 @@ class ChatwootClient:
         return (conversacion.get("meta") or {}).get("channel") or ""
 
     @staticmethod
-    def _ultima_actividad(conversacion: dict) -> datetime | None:
-        ts = (conversacion.get("meta") or {}).get("last_non_activity_message_at")
+    def _ts_ultima_actividad(conversacion: dict) -> int | None:
+        """Last activity timestamp. Chatwoot 4.17.x exposes it as a TOP-LEVEL
+        `last_activity_at`; newer versions may put it in
+        meta.last_non_activity_message_at, kept as fallback (L38-4: the meta
+        field is absent in 4.17 payloads, which made every conversation look
+        window-expired)."""
+        ts = conversacion.get("last_activity_at")
+        if ts is None:
+            ts = (conversacion.get("meta") or {}).get("last_non_activity_message_at")
+        return ts
+
+    @classmethod
+    def _ultima_actividad(cls, conversacion: dict) -> datetime | None:
+        ts = cls._ts_ultima_actividad(conversacion)
         return datetime.fromtimestamp(ts, tz=UTC) if ts else None
 
     def ventana_vencida(self, conversacion: dict, ahora: datetime | None = None) -> bool:
+        """Whether the 24h customer-service window is over. Only consulted
+        for IG/Messenger free text (L39: WhatsApp always sends the template,
+        regardless of the window). NOTE: last_activity_at counts outgoing
+        activity too, so this is an approximation for those channels."""
         ultima = self._ultima_actividad(conversacion)
         if ultima is None:
             return True
@@ -245,11 +275,13 @@ class ChatwootClient:
     ) -> dict:
         """Send one message, channel-aware.
 
-        - outside the window on WhatsApp → template (plantilla required)
-        - inside the window (any channel) → free text
-        - outside the window on IG/Messenger → FueraDeVentana (nothing sent)
+        - WhatsApp → ALWAYS the template (L39), verbatim as a fixed message:
+          processed_params stays empty because only 0-variable templates are
+          supported (the /ajustes selector warns about the rest)
+        - IG/Messenger inside the 24h window → free text
+        - IG/Messenger outside the window → FueraDeVentana (nothing sent)
         """
-        if plantilla and self.puede_plantilla(conversacion) and self.ventana_vencida(conversacion):
+        if plantilla and self.puede_plantilla(conversacion):
             content_attributes = {
                 "template_params": {
                     "name": plantilla,

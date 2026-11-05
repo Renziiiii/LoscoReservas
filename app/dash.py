@@ -22,7 +22,7 @@ from app.auth import (
     oauth2_scheme,
 )
 from app.ajustes import obtener_configuracion
-from app.chatwoot import ChatwootClient
+from app.chatwoot import ChatwootClient, variables_plantilla
 from app.config import Settings
 from app.db import get_session
 from app.etiquetas import etiquetar_confirmada, migrar_etiqueta
@@ -374,6 +374,7 @@ def ajustes_plantillas(request: Request):
                 "status": p.get("status"),
                 "category": p.get("category"),
                 "language": p.get("language"),
+                "variables": variables_plantilla(p),
             }
             for p in plantillas
         ],

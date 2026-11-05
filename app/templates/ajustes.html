@@ -4,6 +4,8 @@
 <h1>Ajustes de mensajería</h1>
 <p class="muted">Horarios, plantillas y etiqueta de los mensajes automáticos. Se guardan en la base de
 datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el contenedor.</p>
+<p class="muted">Los envíos automáticos usan la plantilla tal cual está aprobada en Meta (mensaje fijo):
+elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.</p>
 
 {% if migrados_contactos is not none and migrados_conv is not none %}
 <div class="banner success">
@@ -88,13 +90,19 @@ datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el co
           activarSelector('sel-plantilla-conf', 'in-plantilla-conf', data.plantillas, {
             valor: function (p) { return p.name; },
             etiqueta: function (p) {
-              return p.name + ' — ' + [p.status, p.category, p.language].filter(Boolean).join(' · ');
+              var base = p.name + ' — ' + [p.status, p.category, p.language].filter(Boolean).join(' · ');
+              return p.variables > 0
+                ? base + ' ⚠️ ' + p.variables + ' variables — no compatible (los envíos son de mensaje fijo)'
+                : base;
             }
           });
           activarSelector('sel-plantilla-inv', 'in-plantilla-inv', data.plantillas, {
             valor: function (p) { return p.name; },
             etiqueta: function (p) {
-              return p.name + ' — ' + [p.status, p.category, p.language].filter(Boolean).join(' · ');
+              var base = p.name + ' — ' + [p.status, p.category, p.language].filter(Boolean).join(' · ');
+              return p.variables > 0
+                ? base + ' ⚠️ ' + p.variables + ' variables — no compatible (los envíos son de mensaje fijo)'
+                : base;
             }
           });
         }

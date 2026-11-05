@@ -15,12 +15,13 @@ iframe de reservas por contacto dentro de Chatwoot.
 - **Mensajería automatizada** (regla de Valen): T-48h confirmación de la
   reserva y el mismo día entre 17:00 y 18:00 confirmación de invitados
   (horas y plantillas se configuran en el panel, `/ajustes`, sin reiniciar
-  el contenedor). Consciente del canal: fuera de la ventana de 24hs en
-  WhatsApp usa plantillas UTILITY aprobadas (se eligen desde el panel,
-  listadas directo de la API de Chatwoot); dentro de la ventana usa texto
-  libre; Instagram/Messenger fuera de ventana no permite mensajes iniciados
-  por el negocio (se registra la falla). Cada reserva puede excluirse de
-  los recordatorios (checkbox "Enviar recordatorios", default sí).
+  el contenedor). Consciente del canal: WhatsApp envía SIEMPRE la plantilla
+  UTILITY seleccionada, tal cual está aprobada en Meta — mensaje fijo, sin
+  variables (el panel avisa si la plantilla elegida tiene variables);
+  Instagram/Messenger usan texto libre dentro de la ventana de 24hs y fuera
+  de ella no permiten mensajes iniciados por el negocio (se registra la
+  falla). Cada reserva puede excluirse de los recordatorios (checkbox
+  "Enviar recordatorios", default sí).
 - **Etiqueta "Reserva confirmada" en Chatwoot**: al confirmar una reserva
   (dashboard, iframe o API) el contacto y su conversación abierta reciben la
   etiqueta configurada en Ajustes, para que aparezca en Contactos > Etiquetado
