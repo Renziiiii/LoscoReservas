@@ -49,6 +49,16 @@ def variables_plantilla(plantilla: dict) -> int:
     return 0
 
 
+def cuerpo_plantilla(plantilla: dict) -> str:
+    """The fixed BODY text of a cached WhatsApp template — the exact message
+    the client receives (L45: Chatwoot's bubble must show the same text, not
+    a personalized summary, to avoid confusion about what was delivered)."""
+    for componente in plantilla.get("components") or []:
+        if (componente.get("type") or "").upper() == "BODY":
+            return str(componente.get("text") or "")
+    return ""
+
+
 class ChatwootClient:
     def __init__(self, base_url: str, api_token: str, account_id: int, transport=None):
         self._account_id = account_id
@@ -307,6 +317,9 @@ class ChatwootClient:
           expires). The template's own `language` must be included (Meta
           rejects a missing language.code); a template absent from the
           inbox's approved list raises PlantillaNoDisponible, sends nothing.
+          L45: on the template path the bubble `content` is the template's
+          own BODY text — exactly what the client receives; the `texto`
+          argument is only the content for the free-text channels.
         - IG/Messenger inside the 24h window → free text
         - IG/Messenger outside the window → FueraDeVentana (nothing sent)
         """
@@ -323,6 +336,8 @@ class ChatwootClient:
                     "del inbox de WhatsApp (¿nombre correcto? ¿aprobada por "
                     "Meta? ¿sincronizada en Chatwoot?)"
                 )
+            # L45: show the client exactly what they got — the template body.
+            body["content"] = cuerpo_plantilla(aprobada) or texto
             body["template_params"] = {
                 "name": plantilla,
                 "category": "UTILITY",

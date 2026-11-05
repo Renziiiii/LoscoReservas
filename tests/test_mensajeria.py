@@ -169,6 +169,10 @@ def test_whatsapp_fuera_de_ventana_envia_plantilla(client):
     assert template_params["language"] == "es_AR"  # Meta rejects a missing language (L42)
     assert template_params["processed_params"] == {}  # fixed message (L39)
     assert "template_params" not in (bodies[0].get("content_attributes") or {})
+    # L45: the Chatwoot bubble shows the template's own body — the exact
+    # message the client receives — not the personalized summary.
+    assert bodies[0]["content"] == "Hola! Te escribimos por tu reserva"
+    assert "Juan Pérez" not in bodies[0]["content"]
     assert report["enviados"] == [1]
 
 
@@ -191,6 +195,9 @@ def test_whatsapp_dentro_de_ventana_envia_plantilla(client):
     assert template_params["language"] == "es_AR"  # Meta rejects a missing language (L42)
     assert template_params["processed_params"] == {}
     assert "template_params" not in (bodies[0].get("content_attributes") or {})
+    # L45: the Chatwoot bubble shows the template's own body.
+    assert bodies[0]["content"] == "Hola! Te escribimos por tu reserva"
+    assert "Juan Pérez" not in bodies[0]["content"]
     assert report["enviados"] == [1]
 
 
@@ -232,7 +239,10 @@ def test_instagram_dentro_de_ventana_envia_texto_libre(client):
         hoy=HOY,
         template_confirmacion="reserva_confirmacion",
     )
-    assert _posted_bodies(fake) and "template_params" not in _posted_bodies(fake)[0]
+    bodies = _posted_bodies(fake)
+    assert len(bodies) == 1
+    assert "template_params" not in bodies[0]
+    assert "Juan Pérez" in bodies[0]["content"]  # free text stays personalized (L45)
     assert report["enviados"] == [1]
 
 
@@ -314,5 +324,7 @@ def test_recordatorio_de_invitados_envia_por_canal_de_hoy(client):
     )
     bodies = _posted_bodies(fake)
     assert len(bodies) == 1
-    assert "HOY" in bodies[0]["content"]
+    # L45: WhatsApp send displays the template's own body — the exact
+    # message the client receives — not the personalized summary.
+    assert bodies[0]["content"] == "Confirmas la cantidad de invitados?"
     assert report["enviados"] == [1]
