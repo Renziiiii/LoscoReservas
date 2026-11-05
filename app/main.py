@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,8 +18,26 @@ from app.iframe import router as iframe_router
 from app.reservas import router as reservas_router
 
 
+def _configurar_logging() -> None:
+    """L40: uvicorn's default config only shows WARNING+ on the console,
+    which silenced the daily job reports (losco.scheduler logs them at
+    INFO). Give the app's `losco` loggers an INFO level and a stderr
+    handler so every cron run leaves a trace in docker logs. Idempotent:
+    safe across repeated create_app() calls (tests)."""
+    losco = logging.getLogger("losco")
+    losco.setLevel(logging.INFO)
+    losco.propagate = False  # our handler already emits; avoid duplicates via root
+    if not losco.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        losco.addHandler(handler)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    _configurar_logging()
     engine = make_engine(settings.database_path)
     scheduler = None
 

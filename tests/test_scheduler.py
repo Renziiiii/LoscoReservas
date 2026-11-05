@@ -60,3 +60,29 @@ def test_app_boots_and_shuts_down_cleanly_with_scheduler_enabled(tmp_path):
     app = create_app(settings)
     with TestClient(app) as client:
         assert client.get("/api/health").status_code == 200
+
+
+def test_create_app_deja_visibles_los_logs_de_losco(tmp_path):
+    """L40: uvicorn's default config only shows WARNING+ on the console,
+    which silences the daily job reports (losco.scheduler logs them at
+    INFO). create_app must give the `losco` loggers an INFO level and an
+    emitting handler so every cron run leaves a trace in docker logs."""
+    import logging
+
+    losco = logging.getLogger("losco")
+    prev_level, prev_handlers, prev_propagate = losco.level, list(losco.handlers), losco.propagate
+    try:
+        losco.setLevel(logging.WARNING)
+        losco.handlers.clear()
+        app = create_app(Settings(
+            database_path=tmp_path / "reservas.db",
+            users="valen:testpass123",
+            jwt_secret="test-secret-0123456789abcdef0123456789abcdef",
+            _env_file=None,
+        ))
+        assert losco.level == logging.INFO
+        assert losco.handlers, "sin handler los registros INFO no llegan a la consola"
+    finally:
+        losco.setLevel(prev_level)
+        losco.handlers[:] = prev_handlers
+        losco.propagate = prev_propagate
