@@ -38,11 +38,13 @@ def crear(client, **overrides):
 class ChatwootFake:
     """httpx.MockTransport-backed Chatwoot: canned contacts/conversations."""
 
-    def __init__(self, contact_by_phone=None, conversations=None, post_fails=False):
+    def __init__(self, contact_by_phone=None, conversations=None, post_fails=False,
+                 plantillas=None):
         self.requests = []
         self.contact_by_phone = contact_by_phone or {}
         self.conversations = conversations or []
         self.post_fails = post_fails
+        self.plantillas = PLANTILLAS_INBOX if plantillas is None else plantillas
 
         def handler(request: httpx.Request) -> httpx.Response:
             self.requests.append((request.method, request.url.path, request.read()))
@@ -53,6 +55,12 @@ class ChatwootFake:
                 if contact is None:
                     return httpx.Response(200, json={"payload": []})
                 return httpx.Response(200, json={"payload": [contact]})
+            if path.endswith("/inboxes") and "/accounts/" in path:
+                return httpx.Response(200, json={"payload": [
+                    {"id": 2, "channel_type": "Channel::Whatsapp"}
+                ]})
+            if "/message_templates" in path:
+                return httpx.Response(200, json={"payload": self.plantillas})
             if "/conversations" in path and request.method == "GET":
                 return httpx.Response(200, json={"payload": self.conversations})
             if path.endswith("/messages") and request.method == "POST":
@@ -73,6 +81,25 @@ class ChatwootFake:
 
 
 CONTACT = {"id": 77, "phone_number": "+5491111111111", "name": "Juan Pérez"}
+
+# Approved cached templates the fake WhatsApp inbox serves (L42: the send
+# resolves the template's language from this list).
+PLANTILLAS_INBOX = [
+    {
+        "name": "reserva_confirmacion",
+        "status": "APPROVED",
+        "category": "UTILITY",
+        "language": "es_AR",
+        "components": [{"type": "BODY", "text": "Hola! Te escribimos por tu reserva"}],
+    },
+    {
+        "name": "invitados_confirmacion",
+        "status": "APPROVED",
+        "category": "UTILITY",
+        "language": "es_AR",
+        "components": [{"type": "BODY", "text": "Confirmas la cantidad de invitados?"}],
+    },
+]
 
 
 def whatsapp_conversation(last_activity_hours_ago):
@@ -136,10 +163,12 @@ def test_whatsapp_fuera_de_ventana_envia_plantilla(client):
     )
     bodies = _posted_bodies(fake)
     assert len(bodies) == 1
-    template_params = bodies[0]["content_attributes"]["template_params"]
+    template_params = bodies[0]["template_params"]  # TOP-LEVEL key (L42)
     assert template_params["name"] == "reserva_confirmacion"
     assert template_params["category"] == "UTILITY"
+    assert template_params["language"] == "es_AR"  # Meta rejects a missing language (L42)
     assert template_params["processed_params"] == {}  # fixed message (L39)
+    assert "template_params" not in (bodies[0].get("content_attributes") or {})
     assert report["enviados"] == [1]
 
 
@@ -156,11 +185,34 @@ def test_whatsapp_dentro_de_ventana_envia_plantilla(client):
     )
     bodies = _posted_bodies(fake)
     assert len(bodies) == 1
-    template_params = bodies[0]["content_attributes"]["template_params"]
+    template_params = bodies[0]["template_params"]  # TOP-LEVEL key (L42)
     assert template_params["name"] == "reserva_confirmacion"
     assert template_params["category"] == "UTILITY"
+    assert template_params["language"] == "es_AR"  # Meta rejects a missing language (L42)
     assert template_params["processed_params"] == {}
+    assert "template_params" not in (bodies[0].get("content_attributes") or {})
     assert report["enviados"] == [1]
+
+
+def test_whatsapp_plantilla_no_aprobada_registra_falla_sin_enviar(client):
+    """L42: a template missing from the inbox's approved list must not be
+    sent (Meta would reject it) — the failure is recorded per reservation."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations=[whatsapp_conversation(30)],
+        plantillas=[],  # nothing approved in the inbox
+    )
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+    )
+    assert _posted_bodies(fake) == []
+    assert report["enviados"] == []
+    assert "reserva_confirmacion" in report["fallas"][0]["motivo"]
+    assert "aprobadas" in report["fallas"][0]["motivo"]
 
 
 def test_instagram_dentro_de_ventana_envia_texto_libre(client):
@@ -180,7 +232,7 @@ def test_instagram_dentro_de_ventana_envia_texto_libre(client):
         hoy=HOY,
         template_confirmacion="reserva_confirmacion",
     )
-    assert _posted_bodies(fake) and "template_params" not in _posted_bodies(fake)[0]["content_attributes"]
+    assert _posted_bodies(fake) and "template_params" not in _posted_bodies(fake)[0]
     assert report["enviados"] == [1]
 
 

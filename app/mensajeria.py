@@ -19,7 +19,12 @@ from datetime import UTC, date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.chatwoot import ChatwootClient, FueraDeVentana, NoHayConversacion
+from app.chatwoot import (
+    ChatwootClient,
+    FueraDeVentana,
+    NoHayConversacion,
+    PlantillaNoDisponible,
+)
 from app.models import Reserva
 
 logger = logging.getLogger("losco.mensajeria")
@@ -84,7 +89,7 @@ def _enviar_lote(
             )
             setattr(reserva, columna_enviada.name, datetime.now(UTC))
             report["enviados"].append(reserva.id)
-        except (NoHayConversacion, FueraDeVentana) as exc:
+        except (NoHayConversacion, FueraDeVentana, PlantillaNoDisponible) as exc:
             report["fallas"].append({"reserva_id": reserva.id, "motivo": str(exc)})
         except Exception as exc:  # HTTP/transport errors: log and continue
             logger.warning("envío falló para reserva %s: %s", reserva.id, exc)

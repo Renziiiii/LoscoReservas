@@ -10,9 +10,11 @@ Messenger, and the send rules differ per channel:
   templates for business-initiated messages, so outside the window we cannot
   send anything.
 
-The template_params shape (name/category/processed_params) was verified live
-against production Chatwoot 4.17 (L37); the empty-processed_params fixed
-template shape is verified in the post-deploy end-to-end run (L39).
+The template send shape is version-specific and was verified live against
+production (L42): Chatwoot 4.17's MessageBuilder reads `template_params`
+as a TOP-LEVEL body key (a newer documented shape nests it inside
+content_attributes — 4.17 silently ignores that), and Meta requires the
+template's own `language` (a missing language.code is rejected).
 """
 
 import re
@@ -29,6 +31,12 @@ class NoHayConversacion(Exception):
 
 class FueraDeVentana(Exception):
     """Channel cannot receive business-initiated free text or templates."""
+
+
+class PlantillaNoDisponible(Exception):
+    """The configured WhatsApp template is not among the inbox's approved
+    cached templates (missing, rejected by Meta, or not synced) — nothing
+    is sent and the failure is recorded per reservation (L42)."""
 
 
 def variables_plantilla(plantilla: dict) -> int:
@@ -146,6 +154,19 @@ class ChatwootClient:
                     continue  # not a WhatsApp inbox: try the next one
                 raise
         return []
+
+    def plantilla_aprobada(self, nombre: str) -> dict | None:
+        """The inbox's approved cached WhatsApp template with this exact
+        name (L42). Its `language` is required to build a valid template
+        send — Meta rejects a non-string template.language.code, and
+        Chatwoot's own matcher expects the exact language too."""
+        for plantilla in self.plantillas_whatsapp():
+            if (
+                plantilla.get("name") == nombre
+                and (plantilla.get("status") or "").lower() == "approved"
+            ):
+                return plantilla
+        return None
 
     def conversacion_abierta(self, telefono: str) -> dict:
         """Open conversation for a phone, or raises NoHayConversacion."""
@@ -277,32 +298,42 @@ class ChatwootClient:
 
         - WhatsApp → ALWAYS the template (L39), verbatim as a fixed message:
           processed_params stays empty because only 0-variable templates are
-          supported (the /ajustes selector warns about the rest)
+          supported (the /ajustes selector warns about the rest).
+          L42: `template_params` goes TOP-LEVEL in the body — Chatwoot 4.17
+          reads params[:template_params] (stored in additional_attributes,
+          the only place the WhatsApp sender looks); nested inside
+          content_attributes it is silently ignored and the message falls
+          back to free text (which fails outright once the 24h window
+          expires). The template's own `language` must be included (Meta
+          rejects a missing language.code); a template absent from the
+          inbox's approved list raises PlantillaNoDisponible, sends nothing.
         - IG/Messenger inside the 24h window → free text
         - IG/Messenger outside the window → FueraDeVentana (nothing sent)
         """
-        if plantilla and self.puede_plantilla(conversacion):
-            content_attributes = {
-                "template_params": {
-                    "name": plantilla,
-                    "category": "UTILITY",
-                    "processed_params": plantilla_params or {},
-                }
-            }
-        elif not self.ventana_vencida(conversacion):
-            content_attributes = {}
-        else:
-            canal = self._canal(conversacion) or "canal desconocido"
-            raise FueraDeVentana(
-                f"ventana de 24hs vencida en {canal}: no se puede iniciar conversación"
-            )
-
         body = {
             "content": texto,
             "message_type": "outgoing",
             "private": False,
-            "content_attributes": content_attributes,
         }
+        if plantilla and self.puede_plantilla(conversacion):
+            aprobada = self.plantilla_aprobada(plantilla)
+            if aprobada is None or not aprobada.get("language"):
+                raise PlantillaNoDisponible(
+                    f"la plantilla {plantilla!r} no figura entre las aprobadas "
+                    "del inbox de WhatsApp (¿nombre correcto? ¿aprobada por "
+                    "Meta? ¿sincronizada en Chatwoot?)"
+                )
+            body["template_params"] = {
+                "name": plantilla,
+                "category": "UTILITY",
+                "language": aprobada["language"],
+                "processed_params": plantilla_params or {},
+            }
+        elif self.ventana_vencida(conversacion):
+            canal = self._canal(conversacion) or "canal desconocido"
+            raise FueraDeVentana(
+                f"ventana de 24hs vencida en {canal}: no se puede iniciar conversación"
+            )
         conversation_id = conversacion["id"]
         response = self._http.post(
             f"/api/v1/accounts/{self._account_id}/conversations/{conversation_id}/messages",
