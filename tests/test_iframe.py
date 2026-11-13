@@ -633,3 +633,136 @@ def test_iframe_patch_enviar_recordatorio_and_persists(tmp_path):
             "/iframe/reservas.json", params={"tel": "5491155551234", "key": EMBED_KEY}
         )
         assert listed.json()[0]["enviar_recordatorio"] is False
+
+
+# --- T21: anotar el teléfono cuando el contacto no lo tiene (S11/L46) ---
+
+
+def test_iframe_app_page_never_blocks_on_missing_phone(tmp_path):
+    """The form must render even when the contact has no phone in Chatwoot:
+    the agent annotates the number they asked for in the chat. The old
+    blocking message is replaced by a hint, the phone input becomes
+    required, and the appContext contact id travels with the form."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        text = response.text
+        assert "El contacto no tiene teléfono cargado en Chatwoot." not in text
+        assert 'id="sin-telefono-hint"' in text
+        # the phone cannot be derived from the contact: the form requires it
+        assert 'id="f-telefono" name="telefono" maxlength="32" required' in text
+        # the appContext contact id enables the Chatwoot phone sync
+        assert "contacto_chatwoot_id" in text
+        assert "contactId = contact.id || null" in text
+
+
+def test_iframe_create_passes_contact_id_to_sync(tmp_path, monkeypatch):
+    """POST with contacto_chatwoot_id: the sync runs with the contact id and
+    the NORMALIZED phone (same rule as the rest of the app)."""
+    llamadas = []
+
+    def espia(settings, contacto_id, telefono, transport=None):
+        llamadas.append((contacto_id, telefono))
+        return True
+
+    monkeypatch.setattr("app.iframe.sincronizar_telefono_contacto", espia)
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        payload = _payload(telefono="+54 9 351 370-8732", contacto_chatwoot_id=1096)
+        response = client.post(
+            "/iframe/reservas.json", params={"key": EMBED_KEY}, json=payload
+        )
+        assert response.status_code == 201, response.text
+    assert llamadas == [(1096, "+5493513708732")]
+
+
+def test_iframe_create_without_contact_id_skips_sync(tmp_path, monkeypatch):
+    llamadas = []
+
+    def espia(settings, contacto_id, telefono, transport=None):
+        llamadas.append(contacto_id)
+        return False
+
+    monkeypatch.setattr("app.iframe.sincronizar_telefono_contacto", espia)
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/iframe/reservas.json", params={"key": EMBED_KEY}, json=_payload()
+        )
+        assert response.status_code == 201, response.text
+    assert llamadas == []
+
+
+def test_iframe_create_survives_sync_reporting_failure(tmp_path, monkeypatch):
+    """The sync never raises by contract (fail-soft inside, pinned in
+    test_contactos): when it reports False the save has already succeeded."""
+    def espia(settings, contacto_id, telefono, transport=None):
+        return False
+
+    monkeypatch.setattr("app.iframe.sincronizar_telefono_contacto", espia)
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+            json=_payload(contacto_chatwoot_id=1096),
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["telefono"] == "+5491155551234"
+
+
+def test_iframe_patch_with_new_phone_syncs_contact(tmp_path, monkeypatch):
+    """Correcting the phone on an existing reserva syncs the contact too
+    (same only-if-empty rule); patches that do not touch the phone don't."""
+    llamadas = []
+
+    def espia(settings, contacto_id, telefono, transport=None):
+        llamadas.append((contacto_id, telefono))
+        return True
+
+    monkeypatch.setattr("app.iframe.sincronizar_telefono_contacto", espia)
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        created = client.post(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+            json=_payload(contacto_chatwoot_id=1096),
+        )
+        assert created.status_code == 201, created.text
+        rid = created.json()["id"]
+
+        patch = client.patch(
+            f"/iframe/reservas/{rid}.json",
+            params={"key": EMBED_KEY},
+            json={"telefono": "+54 9 351 764-4283", "contacto_chatwoot_id": 1206},
+        )
+        assert patch.status_code == 200, patch.text
+    # the create synced 1096 with the original phone; the phone edit synced
+    # 1206 with the NEW one
+    assert llamadas == [(1096, "+5491155551234"), (1206, "+5493517644283")]
+
+
+def test_iframe_patch_without_phone_change_skips_sync(tmp_path, monkeypatch):
+    llamadas = []
+
+    def espia(settings, contacto_id, telefono, transport=None):
+        llamadas.append(contacto_id)
+        return False
+
+    monkeypatch.setattr("app.iframe.sincronizar_telefono_contacto", espia)
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        created = client.post(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+            json=_payload(),
+        )
+        rid = created.json()["id"]
+        patch = client.patch(
+            f"/iframe/reservas/{rid}.json",
+            params={"key": EMBED_KEY},
+            json={"personas": 6, "contacto_chatwoot_id": 1096},
+        )
+        assert patch.status_code == 200, patch.text
+    assert llamadas == []

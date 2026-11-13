@@ -32,10 +32,11 @@ from sqlalchemy.orm import Session
 
 from app.ajustes import obtener_configuracion
 from app.config import Settings
+from app.contactos import sincronizar_telefono_contacto
 from app.db import get_session
 from app.etiquetas import etiquetar_confirmada
 from app.models import Reserva
-from app.schemas import ReservaCreate, ReservaUpdate
+from app.schemas import ReservaCreateIframe, ReservaUpdateIframe
 
 router = APIRouter()
 
@@ -99,25 +100,34 @@ def _serialize(reserva: Reserva) -> dict:
 @router.post("/iframe/reservas.json", status_code=201, include_in_schema=False)
 def iframe_reservas_create(
     request: Request,
-    payload: ReservaCreate,
+    payload: ReservaCreateIframe,
     key: str = Query(default=""),
     session: Session = Depends(get_session),
 ):
-    """Register a reservation from the Chatwoot tab (T9/L15).
+    """Register a reservation from the Chatwoot tab (T9/L15, S11/L46).
 
     Same schema/validation as the CRUD API, authorized by the embed key
     instead of a JWT (the iframe cannot do cookie/token login). The form
     in /iframe/app prefills nombre/telefono from the appContext contact.
+    When the contact has no phone (Instagram chats) the agent annotates
+    the number they asked for; `contacto_chatwoot_id` then syncs that
+    number to the Chatwoot contact (only when empty, fail-soft) BEFORE
+    labeling, so the label lands on the chat being managed and messaging
+    finds one single contact for the phone.
     """
     settings: Settings = request.app.state.settings
     headers = {"Content-Security-Policy": _frame_ancestors(settings)}
     if not _autorizado(request, key):
         return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
-    reserva = Reserva(**payload.model_dump())
+    reserva = Reserva(**payload.model_dump(exclude={"contacto_chatwoot_id"}))
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
     config = obtener_configuracion(session, settings)
+    if payload.contacto_chatwoot_id:
+        sincronizar_telefono_contacto(
+            settings, payload.contacto_chatwoot_id, reserva.telefono
+        )
     etiquetar_confirmada(settings, reserva, config.etiqueta_confirmada)
     return JSONResponse(_serialize(reserva), status_code=201, headers=headers)
 
@@ -126,11 +136,15 @@ def iframe_reservas_create(
 def iframe_reservas_patch(
     request: Request,
     reserva_id: int,
-    payload: ReservaUpdate,
+    payload: ReservaUpdateIframe,
     key: str = Query(default=""),
     session: Session = Depends(get_session),
 ):
-    """Partial edit of a reservation from the Chatwoot tab (T10/L16)."""
+    """Partial edit of a reservation from the Chatwoot tab (T10/L16).
+
+    When the edit changes the phone, the Chatwoot contact sync runs with
+    the new number (S11/L46: only if the contact has none, fail-soft).
+    """
     settings: Settings = request.app.state.settings
     headers = {"Content-Security-Policy": _frame_ancestors(settings)}
     if not _autorizado(request, key):
@@ -138,11 +152,17 @@ def iframe_reservas_patch(
     reserva = session.get(Reserva, reserva_id)
     if reserva is None:
         return JSONResponse({"detail": "not found"}, status_code=404, headers=headers)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    datos = payload.model_dump(exclude_unset=True)
+    contacto_chatwoot_id = datos.pop("contacto_chatwoot_id", None)
+    for field, value in datos.items():
         setattr(reserva, field, value)
     session.commit()
     session.refresh(reserva)
     config = obtener_configuracion(session, settings)
+    if "telefono" in datos and contacto_chatwoot_id:
+        sincronizar_telefono_contacto(
+            settings, contacto_chatwoot_id, reserva.telefono
+        )
     etiquetar_confirmada(settings, reserva, config.etiqueta_confirmada)
     return JSONResponse(_serialize(reserva), status_code=200, headers=headers)
 

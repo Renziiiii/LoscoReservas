@@ -174,9 +174,10 @@
         </div>
         <div>
           <label for="f-telefono">Teléfono</label>
-          <input id="f-telefono" name="telefono" maxlength="32">
+          <input id="f-telefono" name="telefono" maxlength="32" required>
         </div>
       </div>
+      <p class="hint" id="sin-telefono-hint" style="display:none">📞 El contacto no tiene teléfono en Chatwoot — anotá el número que te pasó y guardá la reserva; queda registrado también en su contacto.</p>
       <div class="fila">
         <div>
           <label for="f-fecha">Fecha</label>
@@ -225,6 +226,7 @@
     let telActual = "";
     let contactName = "";
     let contactPhone = "";
+    let contactId = null;
     let editingId = null;
 
     window.addEventListener("message", (event) => {
@@ -246,17 +248,22 @@
       }
       const contact = data.data.contact || {};
       const tel = contact.phone_number || contact.phone || "";
-      if (!tel) {
-        document.getElementById("estado").textContent =
-          "El contacto no tiene teléfono cargado en Chatwoot.";
-        return;
-      }
-      telActual = tel;
+      contactId = contact.id || null;
       contactName = contact.name || "";
       contactPhone = tel;
+      // S11/L46: the form always opens — for a contact without a phone
+      // (Instagram chats) the agent annotates the number they asked for
+      // in the conversation. The list can only load once a phone is known.
       document.getElementById("form-reserva").style.display = "block";
-      modoCrear();
-      cargarReservas();
+      document.getElementById("sin-telefono-hint").style.display = tel ? "none" : "block";
+      if (tel) {
+        telActual = tel;
+        modoCrear();
+        cargarReservas();
+      } else {
+        document.getElementById("estado").textContent = "";
+        modoCrear();
+      }
     });
 
     function modoCrear() {
@@ -395,6 +402,7 @@
       const body = {
         nombre: document.getElementById("f-nombre").value.trim(),
         telefono: document.getElementById("f-telefono").value.trim(),
+        contacto_chatwoot_id: contactId,
         fecha: document.getElementById("f-fecha").value,
         hora: document.getElementById("f-hora").value,
         personas: parseInt(document.getElementById("f-personas").value, 10),
@@ -424,8 +432,14 @@
           const msg = editingId
             ? "Cambios guardados para " + fechaAr(data.fecha) + " " + data.hora + "."
             : "Reserva registrada para " + fechaAr(data.fecha) + " " + data.hora + ".";
+          // S11/L46: the (possibly new) phone becomes the contact's phone —
+          // the next create prefill and the list both follow it.
+          if (data && data.telefono) {
+            contactPhone = data.telefono;
+            telActual = data.telefono;
+          }
           modoCrear();
-          cargarReservas();
+          if (telActual) cargarReservas();
           elOk.textContent = msg;
           elOk.style.display = "block";
         })

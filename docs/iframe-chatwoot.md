@@ -85,6 +85,8 @@ producción).
   verifica en vivo contra el Chatwoot real de LoscoServer en la tarea de
   deploy (T7); los docs oficiales muestran `contact` con
   `phone_number` entre sus atributos.
-- Contacto sin teléfono en Chatwoot → mensaje "El contacto no tiene
-  teléfono cargado". Teléfono sin reservas → "Sin reservas para este
-  contacto."
+- Contacto sin teléfono en Chatwoot (típico en chats de Instagram) → el
+  formulario abre igual (S11/L46): el agente anota el número que le pidió
+  al cliente — requerido en el form — y al guardar la app lo escribe también
+  en el contacto de Chatwoot si estaba vacío (nunca pisa uno existente,
+  fail-soft). Teléfono sin reservas → "Sin reservas para este contacto."

@@ -44,6 +44,14 @@ class ReservaCreate(ReservaBase):
     """All identifying fields required to register a reservation."""
 
 
+class ReservaCreateIframe(ReservaCreate):
+    """Iframe create (S11/L46): adds the Chatwoot contact id from the
+    appContext so a phoneless contact (e.g. Instagram chats) can receive
+    the phone the agent annotated. It is NOT persisted on the reserva."""
+
+    contacto_chatwoot_id: int | None = None
+
+
 class ReservaUpdate(BaseModel):
     """Partial update: only the fields actually sent change."""
 
@@ -66,3 +74,10 @@ class ReservaOut(ReservaBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class ReservaUpdateIframe(ReservaUpdate):
+    """Iframe edit: same optional contact id (the sync only fills empty
+    phones), used when the agent corrects the reserva's phone."""
+
+    contacto_chatwoot_id: int | None = None

@@ -86,6 +86,23 @@ class ChatwootClient:
         payload = data.get("payload") or []
         return payload[0] if payload else None
 
+    def obtener_contacto(self, contacto_id: int) -> dict | None:
+        """One account contact by id. NOTE: the show endpoint returns the
+        contact DIRECTLY in `payload` (unlike create, which nests it in
+        payload.contact)."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}")
+        return data.get("payload") or None
+
+    def actualizar_telefono_contacto(self, contacto_id: int, telefono: str) -> dict:
+        """Set the contact's phone. Callers must only fill EMPTY phones
+        (S11/L46): an existing number is never overwritten."""
+        response = self._http.patch(
+            f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}",
+            json={"phone_number": telefono},
+        )
+        response.raise_for_status()
+        return response.json().get("payload") or {}
+
     def conversaciones(self, contacto_id: int) -> list[dict]:
         data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/conversations")
         return data.get("payload") or []
