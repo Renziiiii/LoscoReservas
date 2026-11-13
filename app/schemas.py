@@ -10,11 +10,21 @@ Estado = Literal["pendiente", "confirmada", "cancelada"]
 
 
 def _normalize_telefono(value: str) -> str:
-    """Keep only leading '+' and digits: "+54 9 11 5555-1234" -> "+5491155551234"."""
-    normalized = re.sub(r"(?<!^)\D", "", value)
-    if len(re.sub(r"\D", "", normalized)) < 8:
-        raise ValueError("telefono must contain at least 8 digits")
-    return normalized
+    r"""Store phones in full international (E.164) format: both
+    '+54 9 351 260-2003' and '5493512602003' become '+5493512602003'.
+
+    Chatwoot 4.17 accepts only the /\+[1-9]\d{1,14}/ pattern (L51) and every
+    phone in the account is stored '+...', so the '+' is always prepended
+    and a number without a country code is rejected here — storing it
+    anyway made the Chatwoot contact write fail with a 422 and the Meta
+    send fail silently."""
+    digitos = re.sub(r"\D", "", value)
+    if not 11 <= len(digitos) <= 15 or digitos.startswith("0"):
+        raise ValueError(
+            "telefono must be in international format with the country "
+            "code (e.g. +54 9 351 260-2003)"
+        )
+    return f"+{digitos}"
 
 
 class ReservaBase(BaseModel):

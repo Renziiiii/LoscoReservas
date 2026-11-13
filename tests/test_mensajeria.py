@@ -428,3 +428,18 @@ def test_recordatorio_de_invitados_envia_plantilla(client):
     # message the client receives — not a personalized summary.
     assert bodies[0]["content"] == "Confirmas la cantidad de invitados?"
     assert report["enviados"] == [1]
+
+
+def test_numero_legacy_sin_mas_se_normaliza_a_e164(client):
+    """L51: rows saved before the E.164 validation may lack the '+';
+    the ensure path prepends it (Chatwoot only accepts +[1-9]...) so the
+    contact is created with the same format as every other contact."""
+    fake = ChatwootFake(contact_by_phone={})  # legacy row -> no contact yet
+    chatwoot = fake.client()
+    chatwoot.asegurar_conversacion_whatsapp("5493512602003", "Renzi")
+    posts = [
+        json.loads(body)
+        for method, path, body in fake.requests
+        if method == "POST" and path.endswith("/contacts")
+    ]
+    assert posts and posts[0]["phone_number"] == "+5493512602003"

@@ -64,6 +64,21 @@ def _prioridad_inbox_whatsapp(inbox: dict) -> int:
     return 2
 
 
+def e164(telefono: str) -> str:
+    r"""Best-effort E.164 for a STORED phone (L51): Chatwoot 4.17 accepts
+    only the /\+[1-9]\d{1,14}/ pattern, and rows saved before the E.164
+    validation may have lost the leading '+'. Prepends it only when the
+    digits already carry a country code (>= 11 digits); shorter numbers
+    stay untouched so Chatwoot rejects them cleanly instead of creating a
+    wrong-country contact."""
+    tel = (telefono or "").strip()
+    if tel.startswith("+"):
+        return tel
+    if len(re.sub(r"\D", "", tel)) >= 11:
+        return f"+{tel}"
+    return tel
+
+
 class ChatwootClient:
     def __init__(self, base_url: str, api_token: str, account_id: int, transport=None):
         self._account_id = account_id
@@ -249,6 +264,9 @@ class ChatwootClient:
         if inbox_whatsapp is None:
             raise NoHayConversacion("la cuenta de Chatwoot no tiene inbox de WhatsApp")
         wa_inbox_id = inbox_whatsapp["id"]
+
+        # L51: Chatwoot only accepts E.164 phones; legacy rows may lack the '+'.
+        telefono = e164(telefono)
 
         contacto = self.buscar_contacto(telefono)
         if contacto is None:

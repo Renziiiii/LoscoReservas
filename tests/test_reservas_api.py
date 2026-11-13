@@ -150,3 +150,31 @@ def test_delete_removes_reserva(client):
 
 def test_delete_missing_id_returns_404(client):
     assert client.delete("/api/reservas/999").status_code == 404
+
+
+# --- L51: E.164 phones (Chatwoot only accepts +[1-9]\d{1,14}) ---
+
+
+def test_create_rejects_telefono_without_country_code(client):
+    """A local number (no country code) gets stored today and then rejected
+    by Chatwoot's 422 and by Meta silently — reject it at the door."""
+    payload = dict(VALID_PAYLOAD, telefono="3512602003")  # user's real test
+    response = client.post("/api/reservas", json=payload)
+    assert response.status_code == 422
+
+
+def test_create_completes_missing_plus_prefix(client):
+    """Typed with the country code but without the '+': stored as valid
+    E.164 so the Chatwoot contact write and the WA send both work."""
+    payload = dict(VALID_PAYLOAD, telefono="5493512602003")
+    response = client.post("/api/reservas", json=payload)
+    assert response.status_code == 201, response.text
+    assert response.json()["telefono"] == "+5493512602003"
+
+
+def test_create_rejects_telefono_starting_with_zero(client):
+    """'+0...' never matches Chatwoot's +[1-9] — local trunk prefixes like
+    the leading 0 are not a country code."""
+    payload = dict(VALID_PAYLOAD, telefono="011 5555 123456")
+    response = client.post("/api/reservas", json=payload)
+    assert response.status_code == 422

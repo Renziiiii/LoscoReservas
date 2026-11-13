@@ -650,6 +650,8 @@ def test_iframe_app_page_never_blocks_on_missing_phone(tmp_path):
         text = response.text
         assert "El contacto no tiene teléfono cargado en Chatwoot." not in text
         assert 'id="sin-telefono-hint"' in text
+        # L51: the hint teaches the expected international format
+        assert "código de país" in text
         # the phone cannot be derived from the contact: the form requires it
         assert 'id="f-telefono" name="telefono" type="tel" maxlength="32" required' in text
         # the appContext contact id enables the Chatwoot phone sync
