@@ -768,3 +768,18 @@ def test_iframe_patch_without_phone_change_skips_sync(tmp_path, monkeypatch):
         )
         assert patch.status_code == 200, patch.text
     assert llamadas == []
+
+
+def test_iframe_app_warns_on_argentine_number_without_9(tmp_path):
+    """L53: a +54 number with exactly 12 digits looks like a mistyped
+    mobile (the 9 is missing) — it would save fine and then silently
+    never deliver on WhatsApp. The form must confirm before submitting."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/iframe/app", params={"key": EMBED_KEY})
+        assert response.status_code == 200
+        text = response.text
+        assert 'telDigits.startsWith("54") && telDigits.length === 12' in text
+        assert "9 de celular" in text
+        # cancelling the dialog aborts the submit without disabling the button
+        assert "!window.confirm" in text

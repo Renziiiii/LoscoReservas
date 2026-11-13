@@ -394,6 +394,15 @@
       const elErr = document.getElementById("form-err");
       elOk.style.display = "none";
       elErr.style.display = "none";
+      // L53: Argentine mobile numbers need the 9 (+54 9 ...). A +54 with
+      // exactly 12 digits looks like a landline — or a mistyped mobile,
+      // which would save fine and then silently never deliver on WhatsApp.
+      // Confirm before saving so the typo surfaces at the door.
+      const telDigits = document.getElementById("f-telefono").value.replace(/\D/g, "");
+      if (telDigits.startsWith("54") && telDigits.length === 12 &&
+          !window.confirm("El número parece de Argentina sin el 9 de celular (formato: +54 9 351 260-2003). WhatsApp solo entrega a celulares. ¿Es correcto así?")) {
+        return;
+      }
       const boton = editingId
         ? document.getElementById("f-submit-edit")
         : document.getElementById("f-submit");
