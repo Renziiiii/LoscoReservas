@@ -1,12 +1,20 @@
-"""T5 messaging tests (S3/S8) — channel-aware reminder engine.
+"""T5/T22 messaging tests (S3/S8/S12) — always-WhatsApp reminder engine.
 
 The ChatwootClient is exercised against a fake HTTP transport
-(httpx.MockTransport), so the real template-vs-freetext decision logic runs;
-only Chatwoot itself is faked. Dates are fixed (no clock dependence).
-"""
+(httpx.MockTransport), so the real conversation-assurance + template-send
+logic runs; only Chatwoot itself is faked. Dates are fixed (no clock
+dependence).
+
+S12/L47: automated reminders ALWAYS go as the selected WhatsApp template
+to the phone stored on the reserva — no matter which channel managed it.
+The fake simulates the verified Chatwoot 4.17 facts: POST /contacts also
+creates the WhatsApp contact_inbox, POST /conversations returns the
+contact_inbox's existing conversation (lock_to_single_conversation) or
+creates one, and toggle_status answers with a short payload (not the full
+conversation)."""
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -17,6 +25,7 @@ from app.mensajeria import (
     reservas_para_confirmar,
     reservas_para_recordar_invitados,
 )
+from app.models import Reserva
 
 HOY = date(2026, 3, 20)  # Friday
 
@@ -36,35 +45,72 @@ def crear(client, **overrides):
 
 
 class ChatwootFake:
-    """httpx.MockTransport-backed Chatwoot: canned contacts/conversations."""
+    """httpx.MockTransport-backed Chatwoot: canned contacts/inboxes and a
+    conversation store keyed by WhatsApp source_id (phone digits without
+    '+', the contact_inbox convention L47)."""
 
-    def __init__(self, contact_by_phone=None, conversations=None, post_fails=False,
-                 plantillas=None):
+    def __init__(self, contact_by_phone=None, conversations=None, contact_conversations=None,
+                 inboxes=None, plantillas=None, message_fails=None):
         self.requests = []
         self.contact_by_phone = contact_by_phone or {}
-        self.conversations = conversations or []
-        self.post_fails = post_fails
+        # WhatsApp conversations by source_id: POST /conversations returns
+        # the existing one (lock_to_single_conversation) or creates one.
+        self.conversations = conversations or {}
+        # what GET /contacts/{id}/conversations would list — the engine
+        # must NEVER consult it (S12: it would pick the IG chat)
+        self.contact_conversations = contact_conversations or []
+        self.inboxes = inboxes or [{"id": 2, "channel_type": "Channel::Whatsapp"}]
         self.plantillas = PLANTILLAS_INBOX if plantillas is None else plantillas
+        self.message_fails = message_fails or set()  # conversation ids → 500
+        self.next_conversation_id = 500
 
         def handler(request: httpx.Request) -> httpx.Response:
             self.requests.append((request.method, request.url.path, request.read()))
             path = request.url.path
+            method = request.method
             if path.endswith("/contacts/search"):
                 phone = request.url.params.get("q", "")
                 contact = self.contact_by_phone.get(phone)
-                if contact is None:
-                    return httpx.Response(200, json={"payload": []})
-                return httpx.Response(200, json={"payload": [contact]})
+                return httpx.Response(200, json={"payload": [contact] if contact else []})
+            if path.endswith("/contacts") and method == "POST":
+                # creates the contact AND its WhatsApp contact_inbox (L47)
+                body = json.loads(request.content)
+                contact = {
+                    "id": 901,
+                    "name": body["name"],
+                    "phone_number": body["phone_number"],
+                }
+                self.contact_by_phone[body["phone_number"]] = contact
+                return httpx.Response(200, json={"payload": {"contact": contact}})
+            if path.endswith("/conversations") and method == "POST":
+                body = json.loads(request.content)
+                source_id = body["source_id"]
+                conv = self.conversations.get(source_id)
+                if conv is None:
+                    conv = {"id": self.next_conversation_id, "status": "open"}
+                    self.conversations[source_id] = conv
+                    self.next_conversation_id += 1
+                return httpx.Response(200, json=conv)
+            if path.endswith("/conversations") and method == "GET":
+                # the contact's conversation list (any channel) — S12: the
+                # automated path must never fetch this
+                return httpx.Response(200, json={"payload": self.contact_conversations})
+            if path.endswith("/toggle_status") and method == "POST":
+                conv_id = int(path.split("/conversations/")[1].split("/")[0])
+                for conv in self.conversations.values():
+                    if conv["id"] == conv_id:
+                        conv["status"] = "open"
+                # short payload, NOT the full conversation (L47)
+                return httpx.Response(200, json={"payload": {
+                    "success": True, "conversation_id": conv_id, "current_status": "open",
+                }})
             if path.endswith("/inboxes") and "/accounts/" in path:
-                return httpx.Response(200, json={"payload": [
-                    {"id": 2, "channel_type": "Channel::Whatsapp"}
-                ]})
+                return httpx.Response(200, json={"payload": self.inboxes})
             if "/message_templates" in path:
                 return httpx.Response(200, json={"payload": self.plantillas})
-            if "/conversations" in path and request.method == "GET":
-                return httpx.Response(200, json={"payload": self.conversations})
-            if path.endswith("/messages") and request.method == "POST":
-                if self.post_fails:
+            if path.endswith("/messages") and method == "POST":
+                conv_id = int(path.split("/conversations/")[1].split("/")[0])
+                if conv_id in self.message_fails:
                     return httpx.Response(500, json={"error": "boom"})
                 return httpx.Response(200, json={"id": 999})
             return httpx.Response(404, json={})
@@ -81,6 +127,7 @@ class ChatwootFake:
 
 
 CONTACT = {"id": 77, "phone_number": "+5491111111111", "name": "Juan Pérez"}
+CONTACTO2 = {"id": 78, "phone_number": "+5491155555555", "name": "Ana Ruiz"}
 
 # Approved cached templates the fake WhatsApp inbox serves (L42: the send
 # resolves the template's language from this list).
@@ -102,19 +149,22 @@ PLANTILLAS_INBOX = [
 ]
 
 
-def whatsapp_conversation(last_activity_hours_ago):
-    ts = datetime.now(UTC) - timedelta(hours=last_activity_hours_ago)
-    return {
-        "id": 55,
-        "status": "open",
-        "meta": {"channel": "Channel::Whatsapp", "last_non_activity_message_at": int(ts.timestamp())},
-    }
+def whatsapp_conversation(conv_id=55, status="open"):
+    return {"id": conv_id, "status": status, "meta": {"channel": "Channel::Whatsapp"}}
 
 
-def _posted_bodies(fake):
+def _posted_bodies(fake, suffix="/messages"):
     return [
         json.loads(body)
         for method, path, body in fake.requests
+        if method == "POST" and path.endswith(suffix)
+    ]
+
+
+def _message_paths(fake):
+    return [
+        path
+        for method, path, _ in fake.requests
         if method == "POST" and path.endswith("/messages")
     ]
 
@@ -149,12 +199,17 @@ def test_seleccion_invitados_toma_solo_fecha_de_hoy(client):
     session.close()
 
 
-# --- sending: channel-aware decisions ---
+# --- sending: always the WhatsApp template on the WA conversation (S12) ---
 
 
-def test_whatsapp_fuera_de_ventana_envia_plantilla(client):
+def test_envia_plantilla_a_la_conversacion_de_whatsapp(client):
+    """Existing contact + open WA conversation: the selected template is
+    sent verbatim (L39/L42/L45) and no contact is created."""
     crear(client)
-    fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[whatsapp_conversation(72)])
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
     report = enviar_confirmaciones(
         session=client.app.state.sessionmaker(),
         chatwoot=fake.client(),
@@ -170,44 +225,125 @@ def test_whatsapp_fuera_de_ventana_envia_plantilla(client):
     assert template_params["processed_params"] == {}  # fixed message (L39)
     assert "template_params" not in (bodies[0].get("content_attributes") or {})
     # L45: the Chatwoot bubble shows the template's own body — the exact
-    # message the client receives — not the personalized summary.
+    # message the client receives — not a personalized summary.
     assert bodies[0]["content"] == "Hola! Te escribimos por tu reserva"
     assert "Juan Pérez" not in bodies[0]["content"]
     assert report["enviados"] == [1]
+    # the contact already existed: nothing was created (L47)
+    assert _posted_bodies(fake, "/contacts") == []
 
 
-def test_whatsapp_dentro_de_ventana_envia_plantilla(client):
-    """L39: WhatsApp ALWAYS sends the selected template — even inside the
-    24h window — as a fixed message (empty processed_params)."""
+def test_conversacion_resuelta_se_reabre_antes_de_enviar(client):
+    """L47: a resolved WA conversation is reopened with toggle_status
+    {status: "open"} exactly once, and the template goes to the SAME
+    conversation id (no refetch — the toggle response is not the
+    conversation)."""
     crear(client)
-    fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[whatsapp_conversation(1)])
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation(status="resolved")},
+    )
     report = enviar_confirmaciones(
         session=client.app.state.sessionmaker(),
         chatwoot=fake.client(),
         hoy=HOY,
         template_confirmacion="reserva_confirmacion",
     )
-    bodies = _posted_bodies(fake)
-    assert len(bodies) == 1
-    template_params = bodies[0]["template_params"]  # TOP-LEVEL key (L42)
-    assert template_params["name"] == "reserva_confirmacion"
-    assert template_params["category"] == "UTILITY"
-    assert template_params["language"] == "es_AR"  # Meta rejects a missing language (L42)
-    assert template_params["processed_params"] == {}
-    assert "template_params" not in (bodies[0].get("content_attributes") or {})
-    # L45: the Chatwoot bubble shows the template's own body.
-    assert bodies[0]["content"] == "Hola! Te escribimos por tu reserva"
-    assert "Juan Pérez" not in bodies[0]["content"]
+    toggles = _posted_bodies(fake, "/toggle_status")
+    assert toggles == [{"status": "open"}]
+    # the template landed on the reopened conversation (55), not another
+    assert _message_paths(fake) == ["/api/v1/accounts/1/conversations/55/messages"]
+    assert _posted_bodies(fake)[0]["template_params"]["name"] == "reserva_confirmacion"
     assert report["enviados"] == [1]
 
 
-def test_whatsapp_plantilla_no_aprobada_registra_falla_sin_enviar(client):
-    """L42: a template missing from the inbox's approved list must not be
-    sent (Meta would reject it) — the failure is recorded per reservation."""
+def test_contacto_inexistente_se_crea_y_recibe_plantilla(client):
+    """L47: no contact → POST /contacts {name, phone_number, inbox_id}
+    (which also creates the WhatsApp contact_inbox), then the conversation
+    is resolved by source_id = phone digits without '+', then the template."""
+    crear(client)
+    fake = ChatwootFake()  # no contact for the phone
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+    )
+    contacts_posts = _posted_bodies(fake, "/contacts")
+    assert contacts_posts == [{
+        "name": "Juan Pérez",
+        "phone_number": "+5491111111111",
+        "inbox_id": 2,
+    }]
+    conversations_posts = _posted_bodies(fake, "/conversations")
+    assert len(conversations_posts) == 1
+    assert conversations_posts[0]["inbox_id"] == 2
+    assert conversations_posts[0]["contact_id"] == 901
+    assert conversations_posts[0]["source_id"] == "5491111111111"  # digits, no '+'
+    assert len(_posted_bodies(fake)) == 1  # template sent
+    assert report["enviados"] == [1]
+
+
+def test_gestionada_por_instagram_envia_por_whatsapp(client):
+    """S12: a reservation managed over IG still gets the WhatsApp template
+    on its phone — the engine never consults the contact's conversation
+    list (that's what used to pick the IG chat, which Meta rejects outside
+    the 24h window)."""
+    crear(client)
+    ig = {"id": 66, "status": "open", "meta": {"channel": "Channel::Instagram"}}
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+        contact_conversations=[ig],  # the IG chat exists but must be ignored
+    )
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+    )
+    # the contact's conversation list was never fetched
+    paths = [path for _, path, _ in fake.requests]
+    assert "/api/v1/accounts/1/contacts/77/conversations" not in paths
+    # the template went to the WhatsApp conversation (55), not the IG one
+    assert _message_paths(fake) == ["/api/v1/accounts/1/conversations/55/messages"]
+    bodies = _posted_bodies(fake)
+    assert bodies[0]["template_params"]["name"] == "reserva_confirmacion"
+    assert bodies[0]["content"] == "Hola! Te escribimos por tu reserva"
+    assert report["enviados"] == [1]
+
+
+def test_sin_inbox_de_whatsapp_registra_falla_sin_enviar(client):
+    """The automated send needs a WhatsApp inbox; an account without one
+    records the failure and sends nothing."""
     crear(client)
     fake = ChatwootFake(
         contact_by_phone={"+5491111111111": CONTACT},
-        conversations=[whatsapp_conversation(30)],
+        inboxes=[
+            {"id": 3, "channel_type": "Channel::Instagram"},
+            {"id": 4, "channel_type": "Channel::FacebookPage"},
+        ],
+    )
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+    )
+    assert _posted_bodies(fake) == []
+    assert report["enviados"] == []
+    assert report["fallas"][0]["reserva_id"] == 1
+    assert "whatsapp" in report["fallas"][0]["motivo"].lower()
+
+
+def test_plantilla_no_aprobada_registra_falla_sin_enviar(client):
+    """L42: a template missing from the inbox's approved list must not be
+    sent (Meta would reject it) — the failure is recorded per reservation
+    and the reserva stays unmarked."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
         plantillas=[],  # nothing approved in the inbox
     )
     report = enviar_confirmaciones(
@@ -218,90 +354,50 @@ def test_whatsapp_plantilla_no_aprobada_registra_falla_sin_enviar(client):
     )
     assert _posted_bodies(fake) == []
     assert report["enviados"] == []
+    assert report["fallas"][0]["reserva_id"] == 1
     assert "reserva_confirmacion" in report["fallas"][0]["motivo"]
     assert "aprobadas" in report["fallas"][0]["motivo"]
-
-
-def test_instagram_dentro_de_ventana_envia_texto_libre(client):
-    """IG keeps free text inside the window; the activity timestamp is the
-    TOP-LEVEL last_activity_at that Chatwoot 4.17.x actually returns (L38-4)."""
-    crear(client)
-    ig = {
-        "id": 66,
-        "status": "open",
-        "meta": {"channel": "Channel::Instagram"},
-        "last_activity_at": int((datetime.now(UTC) - timedelta(hours=2)).timestamp()),
-    }
-    fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[ig])
-    report = enviar_confirmaciones(
-        session=client.app.state.sessionmaker(),
-        chatwoot=fake.client(),
-        hoy=HOY,
-        template_confirmacion="reserva_confirmacion",
-    )
-    bodies = _posted_bodies(fake)
-    assert len(bodies) == 1
-    assert "template_params" not in bodies[0]
-    assert "Juan Pérez" in bodies[0]["content"]  # free text stays personalized (L45)
-    assert report["enviados"] == [1]
-
-
-def test_instagram_con_ventana_vencida_no_envia_nada(client):
-    crear(client)
-    ig = {
-        "id": 66,
-        "status": "open",
-        "meta": {"channel": "Channel::Instagram", "last_non_activity_message_at": int(
-            (datetime.now(UTC) - timedelta(hours=30)).timestamp())},
-    }
-    fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[ig])
-    report = enviar_confirmaciones(
-        session=client.app.state.sessionmaker(),
-        chatwoot=fake.client(),
-        hoy=HOY,
-        template_confirmacion="reserva_confirmacion",
-    )
-    assert _posted_bodies(fake) == []
-    assert report["enviados"] == []
-    assert report["fallas"][0]["reserva_id"] == 1
-    assert "ventana" in report["fallas"][0]["motivo"].lower()
-
-
-def test_contacto_inexistente_registra_falla(client):
-    crear(client)
-    fake = ChatwootFake(contact_by_phone={}, conversations=[])
-    report = enviar_confirmaciones(
-        session=client.app.state.sessionmaker(),
-        chatwoot=fake.client(),
-        hoy=HOY,
-        template_confirmacion="reserva_confirmacion",
-    )
-    assert _posted_bodies(fake) == []
-    assert report["fallas"][0]["reserva_id"] == 1
+    with client.app.state.sessionmaker() as session:
+        assert session.get(Reserva, 1).confirmacion_enviada_at is None
 
 
 def test_falla_de_envio_no_marca_ni_frena_las_demas(client):
+    """One HTTP failure mid-batch: that reserva is not marked, the rest of
+    the batch still gets its messages."""
     crear(client, telefono="+5491111111111")
     crear(client, telefono="+5491155555555", nombre="Ana Ruiz", fecha="2026-03-22")
-    contactos = {
-        "+5491111111111": CONTACT,
-        "+5491155555555": {"id": 78, "phone_number": "+5491155555555", "name": "Ana Ruiz"},
-    }
-    fake = ChatwootFake(contact_by_phone=contactos, conversations=[], post_fails=True)
+    fake = ChatwootFake(
+        contact_by_phone={
+            "+5491111111111": CONTACT,
+            "+5491155555555": CONTACTO2,
+        },
+        conversations={
+            "5491111111111": whatsapp_conversation(),  # its send 500s
+            "5491155555555": whatsapp_conversation(conv_id=56),
+        },
+        message_fails={55},
+    )
     report = enviar_confirmaciones(
         session=client.app.state.sessionmaker(),
         chatwoot=fake.client(),
         hoy=HOY,
         template_confirmacion="reserva_confirmacion",
     )
-    # both fail (post_fails), neither marked sent, engine did not crash
-    assert sorted(f["reserva_id"] for f in report["fallas"]) == [1, 2]
-    assert report["enviados"] == []
+    assert report["enviados"] == [2]  # the batch continued past the failure
+    assert len(report["fallas"]) == 1
+    assert report["fallas"][0]["reserva_id"] == 1
+    assert "500" in report["fallas"][0]["motivo"]
+    with client.app.state.sessionmaker() as session:
+        assert session.get(Reserva, 1).confirmacion_enviada_at is None  # not marked
+        assert session.get(Reserva, 2).confirmacion_enviada_at is not None
 
 
 def test_envio_es_idempotente_entre_corridas(client):
     crear(client)
-    fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[whatsapp_conversation(1)])
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
     chatwoot = fake.client()
     session = client.app.state.sessionmaker()
     enviar_confirmaciones(
@@ -313,9 +409,12 @@ def test_envio_es_idempotente_entre_corridas(client):
     assert len(_posted_bodies(fake)) == 1
 
 
-def test_recordatorio_de_invitados_envia_por_canal_de_hoy(client):
+def test_recordatorio_de_invitados_envia_plantilla(client):
     crear(client, fecha="2026-03-20")
-    fake = ChatwootFake(contact_by_phone={"+5491111111111": CONTACT}, conversations=[whatsapp_conversation(1)])
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
     report = enviar_recordatorios_invitados(
         session=client.app.state.sessionmaker(),
         chatwoot=fake.client(),
@@ -324,7 +423,8 @@ def test_recordatorio_de_invitados_envia_por_canal_de_hoy(client):
     )
     bodies = _posted_bodies(fake)
     assert len(bodies) == 1
+    assert bodies[0]["template_params"]["name"] == "invitados_confirmacion"
     # L45: WhatsApp send displays the template's own body — the exact
-    # message the client receives — not the personalized summary.
+    # message the client receives — not a personalized summary.
     assert bodies[0]["content"] == "Confirmas la cantidad de invitados?"
     assert report["enviados"] == [1]

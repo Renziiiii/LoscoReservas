@@ -1,14 +1,14 @@
 """Chatwoot API client (agent token, API v1).
 
-Multi-channel reality (L7/L39): Chatwoot serves WhatsApp, Instagram and
-Messenger, and the send rules differ per channel:
-- WhatsApp: ALWAYS the approved UTILITY template selected in /ajustes, sent
-  verbatim as a fixed message — no processed_params (L39: the app only
-  supports 0-variable templates, and Meta charges a utility template the
-  same as a session message, so free text has no advantage).
-- Instagram/Messenger: free text inside the 24h window; there are no approved
-  templates for business-initiated messages, so outside the window we cannot
-  send anything.
+Automated messaging is ALWAYS WhatsApp (S12/L47): the reminder jobs send
+the approved UTILITY template selected in /ajustes to the phone stored on
+the reserva, no matter which channel managed the reservation — Instagram
+and Messenger reject business-initiated free text outside their 24h
+window, and the contact's most-active conversation may well be an IG chat.
+`asegurar_conversacion_whatsapp` resolves (creating when missing) the
+contact, its WhatsApp contact_inbox and the conversation that carries the
+phone, so `enviar_mensaje` can send the template on it. Free text by
+IG/Messenger no longer exists in the automated path.
 
 The template send shape is version-specific and was verified live against
 production (L42): Chatwoot 4.17's MessageBuilder reads `template_params`
@@ -18,19 +18,13 @@ template's own `language` (a missing language.code is rejected).
 """
 
 import re
-from datetime import UTC, datetime, timedelta
 
 import httpx
 
-VENTANA_HORAS = 24
-
 
 class NoHayConversacion(Exception):
-    """The phone matches no contact / no open conversation in Chatwoot."""
-
-
-class FueraDeVentana(Exception):
-    """Channel cannot receive business-initiated free text or templates."""
+    """No WhatsApp inbox / contact / conversation could be resolved for the
+    reserva's phone in Chatwoot."""
 
 
 class PlantillaNoDisponible(Exception):
@@ -57,6 +51,17 @@ def cuerpo_plantilla(plantilla: dict) -> str:
         if (componente.get("type") or "").upper() == "BODY":
             return str(componente.get("text") or "")
     return ""
+
+
+def _prioridad_inbox_whatsapp(inbox: dict) -> int:
+    """Sort priority for finding the account's WhatsApp inbox: native
+    WhatsApp first, then Twilio, then anything else."""
+    channel = inbox.get("channel_type") or ""
+    if channel.endswith("Whatsapp"):
+        return 0
+    if channel.endswith("Twilio"):
+        return 1
+    return 2
 
 
 class ChatwootClient:
@@ -164,16 +169,7 @@ class ChatwootClient:
         """Templates of the first inbox that answers, preferring native
         WhatsApp (Channel::Whatsapp), then Twilio, then anything else:
         non-WhatsApp inboxes answer 422 and are skipped."""
-
-        def prioridad(inbox: dict) -> int:
-            channel = inbox.get("channel_type") or ""
-            if channel.endswith("Whatsapp"):
-                return 0
-            if channel.endswith("Twilio"):
-                return 1
-            return 2
-
-        for inbox in sorted(self.listar_inboxes(), key=prioridad):
+        for inbox in sorted(self.listar_inboxes(), key=_prioridad_inbox_whatsapp):
             try:
                 return self.listar_plantillas(inbox["id"])
             except httpx.HTTPStatusError as exc:
@@ -196,7 +192,12 @@ class ChatwootClient:
         return None
 
     def conversacion_abierta(self, telefono: str) -> dict:
-        """Open conversation for a phone, or raises NoHayConversacion."""
+        """Open conversation for a phone, or raises NoHayConversacion.
+
+        NOT used by the automated sends (those always go through
+        asegurar_conversacion_whatsapp, S12/L47); etiquetar still uses it
+        to pick the chat being managed.
+        """
         contacto = self.buscar_contacto(telefono)
         if contacto is None:
             raise NoHayConversacion(f"sin contacto en Chatwoot para {telefono}")
@@ -205,46 +206,80 @@ class ChatwootClient:
         ]
         if not abiertas:
             raise NoHayConversacion(f"sin conversación abierta para {telefono}")
-        # most recently active open conversation wins (top-level field, L38-4)
-        return max(abiertas, key=lambda c: self._ts_ultima_actividad(c) or 0)
 
-    # --- channel awareness ---
+        def ts(c: dict) -> int:
+            # most recently active open conversation wins (top-level field,
+            # with the old meta field as fallback — L38-4)
+            return c.get("last_activity_at") or (c.get("meta") or {}).get(
+                "last_non_activity_message_at"
+            ) or 0
 
-    @staticmethod
-    def _canal(conversacion: dict) -> str:
-        return (conversacion.get("meta") or {}).get("channel") or ""
+        return max(abiertas, key=ts)
 
-    @staticmethod
-    def _ts_ultima_actividad(conversacion: dict) -> int | None:
-        """Last activity timestamp. Chatwoot 4.17.x exposes it as a TOP-LEVEL
-        `last_activity_at`; newer versions may put it in
-        meta.last_non_activity_message_at, kept as fallback (L38-4: the meta
-        field is absent in 4.17 payloads, which made every conversation look
-        window-expired)."""
-        ts = conversacion.get("last_activity_at")
-        if ts is None:
-            ts = (conversacion.get("meta") or {}).get("last_non_activity_message_at")
-        return ts
+    # --- WhatsApp conversation assurance (S12/L47) ---
 
-    @classmethod
-    def _ultima_actividad(cls, conversacion: dict) -> datetime | None:
-        ts = cls._ts_ultima_actividad(conversacion)
-        return datetime.fromtimestamp(ts, tz=UTC) if ts else None
+    def asegurar_conversacion_whatsapp(self, telefono: str, nombre: str) -> dict:
+        """The WhatsApp conversation for a phone, creating what's missing.
 
-    def ventana_vencida(self, conversacion: dict, ahora: datetime | None = None) -> bool:
-        """Whether the 24h customer-service window is over. Only consulted
-        for IG/Messenger free text (L39: WhatsApp always sends the template,
-        regardless of the window). NOTE: last_activity_at counts outgoing
-        activity too, so this is an approximation for those channels."""
-        ultima = self._ultima_actividad(conversacion)
-        if ultima is None:
-            return True
-        ahora = ahora or datetime.now(UTC)
-        return ahora - ultima > timedelta(hours=VENTANA_HORAS)
+        The automated sends always go by WhatsApp template to the
+        reserva's phone, no matter which channel managed the reservation:
+        this resolves (creating when needed) the contact, its WhatsApp
+        contact_inbox and the conversation that carries the phone, and
+        reopens it when resolved. Verified 4.17 facts (L47):
+        - POST /contacts {name, phone_number, inbox_id} creates the contact
+          AND its WhatsApp contact_inbox (source_id = phone digits without
+          '+'); it is NOT an upsert.
+        - POST /conversations {inbox_id, contact_id, source_id} resolves
+          the contact_inbox (first_or_create) and, because every inbox in
+          the account has lock_to_single_conversation=TRUE, RETURNS the
+          existing conversation instead of duplicating; creates one when
+          none exists.
+        - toggle_status {status: "open"} reopens a resolved conversation;
+          its response is a short payload (NOT the conversation), so the
+          already-known conversation id keeps being used.
+        """
+        inbox_whatsapp = next(
+            (
+                inbox
+                for inbox in sorted(self.listar_inboxes(), key=_prioridad_inbox_whatsapp)
+                if (inbox.get("channel_type") or "").endswith(("Whatsapp", "Twilio"))
+            ),
+            None,
+        )
+        if inbox_whatsapp is None:
+            raise NoHayConversacion("la cuenta de Chatwoot no tiene inbox de WhatsApp")
+        wa_inbox_id = inbox_whatsapp["id"]
 
-    def puede_plantilla(self, conversacion: dict) -> bool:
-        """Only WhatsApp supports approved templates."""
-        return "Whatsapp" in self._canal(conversacion)
+        contacto = self.buscar_contacto(telefono)
+        if contacto is None:
+            response = self._http.post(
+                f"/api/v1/accounts/{self._account_id}/contacts",
+                json={"name": nombre, "phone_number": telefono, "inbox_id": wa_inbox_id},
+            )
+            response.raise_for_status()
+            payload = response.json().get("payload") or {}
+            contacto = payload.get("contact") or payload
+        contact_id = contacto["id"]
+
+        # WhatsApp source_id convention: digits without the leading '+'.
+        source_id = telefono.lstrip("+")
+        response = self._http.post(
+            f"/api/v1/accounts/{self._account_id}/conversations",
+            json={
+                "inbox_id": wa_inbox_id,
+                "contact_id": contact_id,
+                "source_id": source_id,
+            },
+        )
+        response.raise_for_status()
+        conversacion = response.json()
+        if conversacion.get("status") == "resolved":
+            response = self._http.post(
+                f"/api/v1/accounts/{self._account_id}/conversations/{conversacion['id']}/toggle_status",
+                json={"status": "open"},
+            )
+            response.raise_for_status()
+        return conversacion
 
     # --- contact labels (T14/S10) ---
 
@@ -314,58 +349,43 @@ class ChatwootClient:
 
     # --- sending ---
 
-    def enviar_mensaje(
-        self,
-        conversacion: dict,
-        texto: str,
-        plantilla: str | None = None,
-        plantilla_params: dict | None = None,
-    ) -> dict:
-        """Send one message, channel-aware.
+    def enviar_mensaje(self, conversacion: dict, plantilla: str) -> dict:
+        """Send the selected WhatsApp template on the conversation (S12).
 
-        - WhatsApp → ALWAYS the template (L39), verbatim as a fixed message:
-          processed_params stays empty because only 0-variable templates are
-          supported (the /ajustes selector warns about the rest).
-          L42: `template_params` goes TOP-LEVEL in the body — Chatwoot 4.17
-          reads params[:template_params] (stored in additional_attributes,
-          the only place the WhatsApp sender looks); nested inside
-          content_attributes it is silently ignored and the message falls
-          back to free text (which fails outright once the 24h window
-          expires). The template's own `language` must be included (Meta
-          rejects a missing language.code); a template absent from the
-          inbox's approved list raises PlantillaNoDisponible, sends nothing.
-          L45: on the template path the bubble `content` is the template's
-          own BODY text — exactly what the client receives; the `texto`
-          argument is only the content for the free-text channels.
-        - IG/Messenger inside the 24h window → free text
-        - IG/Messenger outside the window → FueraDeVentana (nothing sent)
+        `plantilla` is required: the automated path ALWAYS sends the
+        template, verbatim as a fixed message — processed_params stays
+        empty because only 0-variable templates are supported (L39; the
+        /ajustes selector warns about the rest). L42:
+        `template_params` goes TOP-LEVEL in the body — Chatwoot 4.17 reads
+        params[:template_params] (stored in additional_attributes, the only
+        place the WhatsApp sender looks); nested inside content_attributes
+        it is silently ignored and the message falls back to free text
+        (which fails outright once the 24h window expires). The template's
+        own `language` must be included (Meta rejects a missing
+        language.code); a template absent from the inbox's approved list
+        raises PlantillaNoDisponible, sends nothing. L45: the bubble
+        `content` is the template's own BODY text — exactly what the client
+        receives.
         """
+        aprobada = self.plantilla_aprobada(plantilla)
+        if aprobada is None or not aprobada.get("language"):
+            raise PlantillaNoDisponible(
+                f"la plantilla {plantilla!r} no figura entre las aprobadas "
+                "del inbox de WhatsApp (¿nombre correcto? ¿aprobada por "
+                "Meta? ¿sincronizada en Chatwoot?)"
+            )
         body = {
-            "content": texto,
+            # L45: show the client exactly what they got — the template body.
+            "content": cuerpo_plantilla(aprobada),
             "message_type": "outgoing",
             "private": False,
-        }
-        if plantilla and self.puede_plantilla(conversacion):
-            aprobada = self.plantilla_aprobada(plantilla)
-            if aprobada is None or not aprobada.get("language"):
-                raise PlantillaNoDisponible(
-                    f"la plantilla {plantilla!r} no figura entre las aprobadas "
-                    "del inbox de WhatsApp (¿nombre correcto? ¿aprobada por "
-                    "Meta? ¿sincronizada en Chatwoot?)"
-                )
-            # L45: show the client exactly what they got — the template body.
-            body["content"] = cuerpo_plantilla(aprobada) or texto
-            body["template_params"] = {
+            "template_params": {
                 "name": plantilla,
                 "category": "UTILITY",
                 "language": aprobada["language"],
-                "processed_params": plantilla_params or {},
-            }
-        elif self.ventana_vencida(conversacion):
-            canal = self._canal(conversacion) or "canal desconocido"
-            raise FueraDeVentana(
-                f"ventana de 24hs vencida en {canal}: no se puede iniciar conversación"
-            )
+                "processed_params": {},
+            },
+        }
         conversation_id = conversacion["id"]
         response = self._http.post(
             f"/api/v1/accounts/{self._account_id}/conversations/{conversation_id}/messages",

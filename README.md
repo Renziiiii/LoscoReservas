@@ -2,8 +2,8 @@
 
 API de gestión de reservas para el bar Losco. Reemplaza el Google Sheets
 manual por una API autohospedada con dashboard admin, mensajería
-automatizada multi-canal vía Chatwoot (WhatsApp, Instagram, Messenger) e
-iframe de reservas por contacto dentro de Chatwoot.
+automatizada por WhatsApp vía Chatwoot e iframe de reservas por contacto
+dentro de Chatwoot (que sirve WhatsApp, Instagram y Messenger).
 
 ## Qué incluye
 
@@ -15,13 +15,16 @@ iframe de reservas por contacto dentro de Chatwoot.
 - **Mensajería automatizada** (regla de Valen): T-48h confirmación de la
   reserva y el mismo día entre 17:00 y 18:00 confirmación de invitados
   (horas y plantillas se configuran en el panel, `/ajustes`, sin reiniciar
-  el contenedor). Consciente del canal: WhatsApp envía SIEMPRE la plantilla
-  UTILITY seleccionada, tal cual está aprobada en Meta — mensaje fijo, sin
-  variables, y en Chatwoot se muestra ese mismo texto (el panel avisa si la
-  plantilla elegida tiene variables);
-  Instagram/Messenger usan texto libre dentro de la ventana de 24hs y fuera
-  de ella no permiten mensajes iniciados por el negocio (se registra la
-  falla). Cada reserva puede excluirse de los recordatorios (checkbox
+  el contenedor). Siempre por WhatsApp: los mensajes automáticos se envían
+  SIEMPRE como plantilla de WhatsApp al teléfono registrado en la reserva,
+  sin importar por qué canal se haya gestionado (Instagram/Messenger no
+  permiten mensajes iniciados por el negocio fuera de su ventana de 24hs);
+  la app asegura la conversación de WhatsApp de ese número (busca el
+  contacto por teléfono, lo crea si no existe y reabre la conversación si
+  está resuelta) y envía la plantilla UTILITY seleccionada, tal cual está
+  aprobada en Meta — mensaje fijo, sin variables, y en Chatwoot se muestra
+  ese mismo texto (el panel avisa si la plantilla elegida tiene variables).
+  Cada reserva puede excluirse de los recordatorios (checkbox
   "Enviar recordatorios", default sí).
 - **Etiqueta "Reserva confirmada" en Chatwoot**: al confirmar una reserva
   (dashboard, iframe o API) el contacto y su conversación abierta reciben la

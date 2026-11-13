@@ -1,13 +1,16 @@
-"""Reminder engine (S3/S8) — Valen's rule, channel-aware (L7).
+"""Reminder engine (S3/S8/S12) — Valen's rule, always by WhatsApp.
 
 - T-48h (reservas_para_confirmar): message confirming the reservation.
   "2 dias antes mejor (para confirmar la reserva)"
 - Same day, sent at the configured hour (Valen: "Entre as 17 y 18"):
   message confirming the guest count.
 
-Channel rules (L7/L39): WhatsApp always receives the fixed UTILITY template
-selected in /ajustes (sent verbatim, no params — 0-variable templates only);
-IG/Messenger get free text inside the 24h window.
+Every send goes to the WhatsApp conversation of the phone stored on the
+reserva (S12/L47), no matter which channel managed it: the engine never
+consults the contact's conversation list (that could pick an Instagram
+chat, which Meta rejects outside its 24h window) — it asks Chatwoot to
+ensure the WhatsApp conversation of that phone and sends the selected
+template on it.
 
 Every send is idempotent per reservation via *_enviada_at timestamps, so the
 daily cron can run safely any number of times.
@@ -21,7 +24,6 @@ from sqlalchemy.orm import Session
 
 from app.chatwoot import (
     ChatwootClient,
-    FueraDeVentana,
     NoHayConversacion,
     PlantillaNoDisponible,
 )
@@ -53,43 +55,27 @@ def reservas_para_recordar_invitados(session: Session, hoy: date) -> list[Reserv
     return _query(session, hoy, Reserva.invitados_enviada_at)
 
 
-def _texto_confirmacion(reserva: Reserva) -> str:
-    return (
-        f"Hola {reserva.nombre}! Te escribimos de Losco para confirmar tu reserva "
-        f"del {reserva.fecha} a las {reserva.hora.strftime('%H:%M')} para {reserva.personas} personas. "
-        f"¿Contamos con vos?"
-    )
-
-
-def _texto_invitados(reserva: Reserva) -> str:
-    return (
-        f"Hola {reserva.nombre}! Tu reserva en Losco es HOY a las "
-        f"{reserva.hora.strftime('%H:%M')} para {reserva.personas} personas. "
-        f"¿Confirmás la cantidad de invitados?"
-    )
-
-
 def _enviar_lote(
     session: Session,
     chatwoot: ChatwootClient,
     reservas: list[Reserva],
-    texto_fn,
     plantilla: str,
     columna_enviada,
 ) -> dict:
-    """Try to message each reservation; record per-item success/failure."""
+    """Try to message each reservation; record per-item success/failure.
+
+    A failure on one reserva never stops the batch, and *_enviada_at is
+    only set after a successful send (idempotent retries)."""
     report = {"enviados": [], "fallas": []}
     for reserva in reservas:
         try:
-            conversacion = chatwoot.conversacion_abierta(reserva.telefono)
-            chatwoot.enviar_mensaje(
-                conversacion,
-                texto=texto_fn(reserva),
-                plantilla=plantilla,
+            conversacion = chatwoot.asegurar_conversacion_whatsapp(
+                reserva.telefono, reserva.nombre
             )
+            chatwoot.enviar_mensaje(conversacion, plantilla)
             setattr(reserva, columna_enviada.name, datetime.now(UTC))
             report["enviados"].append(reserva.id)
-        except (NoHayConversacion, FueraDeVentana, PlantillaNoDisponible) as exc:
+        except (NoHayConversacion, PlantillaNoDisponible) as exc:
             report["fallas"].append({"reserva_id": reserva.id, "motivo": str(exc)})
         except Exception as exc:  # HTTP/transport errors: log and continue
             logger.warning("envío falló para reserva %s: %s", reserva.id, exc)
@@ -104,7 +90,7 @@ def enviar_confirmaciones(
     """Daily job: T-48h reservation confirmations."""
     reservas = reservas_para_confirmar(session, hoy)
     return _enviar_lote(
-        session, chatwoot, reservas, _texto_confirmacion,
+        session, chatwoot, reservas,
         template_confirmacion, Reserva.confirmacion_enviada_at,
     )
 
@@ -115,6 +101,6 @@ def enviar_recordatorios_invitados(
     """Daily job: same-day guest-count confirmations (Valen: 17:00-18:00)."""
     reservas = reservas_para_recordar_invitados(session, hoy)
     return _enviar_lote(
-        session, chatwoot, reservas, _texto_invitados,
+        session, chatwoot, reservas,
         template_invitados, Reserva.invitados_enviada_at,
     )

@@ -195,20 +195,13 @@ def test_job_uses_db_template_at_run_time(tmp_path, monkeypatch):
         def __init__(self, base_url, api_token, account_id, transport=None):
             pass
 
-        def conversacion_abierta(self, telefono):
-            return {
-                "id": 7,
-                "meta": {
-                    "channel": "Channel::Whatsapp",
-                    # far past => 24h window expired => template path
-                    "last_non_activity_message_at": 1,
-                },
-            }
+        def asegurar_conversacion_whatsapp(self, telefono, nombre):
+            # S12: the automated send always resolves the WhatsApp
+            # conversation of the reserva's phone (contact/conversation
+            # created or reopened as needed).
+            return {"id": 7, "status": "open"}
 
-        def ventana_vencida(self, conversacion, ahora=None):
-            return True
-
-        def enviar_mensaje(self, conversacion, texto, plantilla=None, plantilla_params=None):
+        def enviar_mensaje(self, conversacion, plantilla):
             captured["plantilla"] = plantilla
             return {}
 
