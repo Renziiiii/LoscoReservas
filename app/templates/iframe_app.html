@@ -177,7 +177,7 @@
           <input id="f-telefono" name="telefono" type="tel" maxlength="32" required>
         </div>
       </div>
-      <p class="hint" id="sin-telefono-hint" style="display:none">📞 El contacto no tiene teléfono en Chatwoot — anotá el número completo con código de país (ej: +54 9 351 260-2003) y guardá la reserva; queda registrado también en su contacto.</p>
+      <p class="hint" id="sin-telefono-hint" style="display:none">📞 El contacto no tiene teléfono en Chatwoot — anotá el número completo con código de país (ej: 5491234567890) y guardá la reserva; queda registrado también en su contacto.</p>
       <div class="fila">
         <div>
           <label for="f-fecha">Fecha</label>
@@ -400,7 +400,7 @@
       // Confirm before saving so the typo surfaces at the door.
       const telDigits = document.getElementById("f-telefono").value.replace(/\D/g, "");
       if (telDigits.startsWith("54") && telDigits.length === 12 &&
-          !window.confirm("El número parece de Argentina sin el 9 de celular (formato: +54 9 351 260-2003). WhatsApp solo entrega a celulares. ¿Es correcto así?")) {
+          !window.confirm("El número parece de Argentina sin el 9 de celular (ej: 5491234567890). WhatsApp solo entrega a celulares. ¿Es correcto así?")) {
         return;
       }
       const boton = editingId

@@ -652,6 +652,10 @@ def test_iframe_app_page_never_blocks_on_missing_phone(tmp_path):
         assert 'id="sin-telefono-hint"' in text
         # L51: the hint teaches the expected international format
         assert "código de país" in text
+        # L54: the example is generic, digits-only (the app adds the '+' and
+        # swallows punctuation; a real client's number must not appear)
+        assert "5491234567890" in text
+        assert "351 260-2003" not in text
         # the phone cannot be derived from the contact: the form requires it
         assert 'id="f-telefono" name="telefono" type="tel" maxlength="32" required' in text
         # the appContext contact id enables the Chatwoot phone sync
@@ -781,5 +785,8 @@ def test_iframe_app_warns_on_argentine_number_without_9(tmp_path):
         text = response.text
         assert 'telDigits.startsWith("54") && telDigits.length === 12' in text
         assert "9 de celular" in text
+        # L54: generic digits-only example, same convention as the hint
+        assert "5491234567890" in text
+        assert "351 260-2003" not in text
         # cancelling the dialog aborts the submit without disabling the button
         assert "!window.confirm" in text
