@@ -39,14 +39,22 @@ def list_reservas(
     estado: str | None = None,
     fecha: str | None = None,
     telefono: str | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
     session: Session = Depends(get_session),
 ):
-    """List reservations, newest-first by fecha/hora. Filters are optional."""
+    """List reservations, newest-first by fecha/hora. Filters are optional.
+    `fecha_desde`/`fecha_hasta` (inclusive, ISO yyyy-mm-dd) give a date range,
+    used by the calendar to fetch only the visible window."""
     query = select(Reserva).order_by(Reserva.fecha, Reserva.hora)
     if estado:
         query = query.where(Reserva.estado == estado)
     if fecha:
         query = query.where(Reserva.fecha == fecha)
+    if fecha_desde:
+        query = query.where(Reserva.fecha >= fecha_desde)
+    if fecha_hasta:
+        query = query.where(Reserva.fecha <= fecha_hasta)
     if telefono:
         from app.schemas import _normalize_telefono
 
