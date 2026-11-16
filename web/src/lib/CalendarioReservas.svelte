@@ -22,9 +22,11 @@
     onEventClick?: (r: Reserva) => void;
     onEventDrop?: (r: Reserva, nuevaFecha: string, nuevaHora: string) => void;
     onEventResize?: (r: Reserva, nuevaHoraFin: string) => void;
+    /** Cambió el rango visible (navegación o cambio de vista). */
+    onDatesSet?: (inicioISO: string, finISO: string) => void;
   }
 
-  let { reservas, onDateClick, onDateSelect, onEventClick, onEventDrop, onEventResize }: Props = $props();
+  let { reservas, onDateClick, onDateSelect, onEventClick, onEventDrop, onEventResize, onDatesSet }: Props = $props();
 
   let cal = $state<Calendar>();
 
@@ -109,6 +111,9 @@
     eventResize(info) {
       const r = (info.event.extendedProps as { reserva: Reserva }).reserva;
       onEventResize?.(r, horaISO(info.event.end ?? info.event.start!));
+    },
+    datesSet(info) {
+      onDatesSet?.(fechaISO(info.view.activeStart), fechaISO(info.view.activeEnd));
     },
   }));
 

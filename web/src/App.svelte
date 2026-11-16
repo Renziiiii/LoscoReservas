@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import CalendarioReservas from "./lib/CalendarioReservas.svelte";
   import { COLORES_ESTADO, type Reserva } from "./lib/reservas";
   // Look vanilla de FullCalendar (como los demos): theme forma + paleta blue.
@@ -8,22 +8,59 @@
   import "fullcalendar/themes/forma/theme.css";
   import "fullcalendar/themes/forma/palettes/blue.css";
 
-  /** Datos demo para el spike (fechas alrededor de hoy). */
-  const MOCK: Reserva[] = [
-    { id: 1, nombre: "Mesa Giacobbe", telefono: "5491155551010", fecha: "2026-11-20", hora: "21:00", personas: 12, estado: "confirmada", planta: "baja" },
-    { id: 2, nombre: "Cumple de Ana", telefono: "5491155551011", fecha: "2026-11-20", hora: "22:30", personas: 40, estado: "agendada", planta: "alta" },
-    { id: 3, nombre: "Los de Palermo", telefono: "5491155551012", fecha: "2026-11-20", hora: "23:00", personas: 35, estado: "pendiente", planta: null },
-    { id: 4, nombre: "Cena empresa XYZ", telefono: "5491155551013", fecha: "2026-11-21", hora: "20:30", personas: 60, estado: "confirmada", planta: "alta" },
-    { id: 5, nombre: "Rodríguez", telefono: "5491155551014", fecha: "2026-11-21", hora: "22:00", personas: 10, estado: "agendada", planta: "baja" },
-    { id: 6, nombre: "Aniversario Juana", telefono: "5491155551015", fecha: "2026-11-22", hora: "21:00", personas: 90, estado: "confirmada", planta: "baja" },
-    { id: 7, nombre: "Mesa 4 amigos", telefono: "5491155551016", fecha: "2026-11-22", hora: "22:15", personas: 18, estado: "agendada", planta: null },
-    { id: 8, nombre: "Despedida Nico", telefono: "5491155551017", fecha: "2026-11-27", hora: "21:30", personas: 55, estado: "agendada", planta: "alta" },
-  ];
-
-  let reservas = $state<Reserva[]>(MOCK);
-  let fuente = $state("demo");
+  let reservas = $state<Reserva[]>([]);
+  let fuente = $state("cargando…");
   let log = $state<{ t: string; msg: string }[]>([]);
   let seleccionada = $state<Reserva | null>(null);
+
+  let rangoActual = $state<{ inicio: string; fin: string } | null>(null);
+  /** true cuando el origen de datos es la API (no el demo): habilita escritura. */
+  let usandoAPI = $state(false);
+  const POLL_MS = 20_000;
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+  async function cargarReservas() {
+    // Rango visible ampliado (±2 meses alrededor) para cubrir navegación
+    // rápida entre vistas antes del próximo datesSet.
+    const params = new URLSearchParams();
+    if (rangoActual) {
+      const ini = new Date(rangoActual.inicio);
+      ini.setMonth(ini.getMonth() - 2);
+      const fin = new Date(rangoActual.fin);
+      fin.setMonth(fin.getMonth() + 2);
+      const iso = (d: Date) => d.toISOString().slice(0, 10);
+      params.set("fecha_desde", iso(ini));
+      params.set("fecha_hasta", iso(fin));
+    }
+    try {
+      const res = await fetch(`/api/reservas?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          reservas = data;
+          usandoAPI = true;
+          fuente = data.length > 0 ? `API real (${data.length} reservas)` : "API real (0 reservas)";
+        }
+      }
+    } catch {
+      fuente = "sin conexión con la API";
+    }
+  }
+
+  /** Persiste un cambio en la API cuando los datos son reales. */
+  async function guardarCambio(id: number, patch: Record<string, string>) {
+    if (!usandoAPI) return;
+    try {
+      const res = await fetch(`/api/reservas/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      anotar(res.ok ? `reserva #${id} guardada` : `PATCH reserva #${id} falló (${res.status})`);
+    } catch {
+      anotar(`PATCH reserva #${id} sin conexión`);
+    }
+  }
 
   function anotar(msg: string) {
     const t = new Date().toLocaleTimeString("es-AR");
@@ -31,20 +68,13 @@
   }
 
   onMount(async () => {
-    // Si uvicorn está corriendo con sesión activa, usa las reservas reales.
-    try {
-      const res = await fetch("/api/reservas");
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          reservas = data;
-          fuente = `API real (${data.length} reservas)`;
-        }
-      }
-    } catch {
-      /* sin backend → queda el demo */
-    }
+    await cargarReservas();
+    // (2) Polling: todos en la oficina ven cambios sin tocar nada.
+    pollTimer = setInterval(cargarReservas, POLL_MS);
   });
+
+  // Limpieza del polling al desmontar (evita fetches zombis en dev con HMR).
+  onDestroy(() => clearInterval(pollTimer));
 </script>
 
 <header class="flex items-baseline gap-3 px-5 py-3 border-b border-zinc-200">
@@ -68,11 +98,19 @@
   <div class="lg:col-span-3">
     <CalendarioReservas
     {reservas}
+    onDatesSet={(inicio, fin) => {
+      // (1) Refetch al navegar: cada cambio de vista/fecha trae el rango fresco.
+      rangoActual = { inicio, fin };
+      cargarReservas();
+    }}
     onDateClick={(f) => anotar(`alta de reserva para ${f} (abriría el form precargado)`)}
     onDateSelect={(ini, fin) => anotar(`selección ${ini} → ${fin} (abriría el form con ese rango)`)}
     onEventClick={(r) => (seleccionada = r)}
-    onEventDrop={(r, f, h) => anotar(`reserva #${r.id} "${r.nombre}" → ${f} ${h} (PATCH)`)}
-    onEventResize={(r, h) => anotar(`reserva #${r.id} "${r.nombre}" ahora termina ${h} (PATCH)`)}
+    onEventDrop={(r, f, h) => {
+      anotar(`reserva #${r.id} "${r.nombre}" → ${f} ${h}`);
+      guardarCambio(r.id, { fecha: f, hora: h });
+    }}
+    onEventResize={(r, h) => anotar(`reserva #${r.id} "${r.nombre}" ahora termina ${h} (sin persistir: la reserva no tiene hora de fin)`)}
     />
   </div>
 
