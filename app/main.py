@@ -73,7 +73,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reservas_router, dependencies=[Depends(get_current_user)])
 
     static_dir = Path(__file__).parent / "static"
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    # html=True: sirve index.html para URLs de directorio (bundle del calendario en /static/calendar/).
+    app.mount("/static", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     @app.get("/api/health", tags=["meta"])
     def health() -> dict:
