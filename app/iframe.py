@@ -83,6 +83,23 @@ def iframe_app(request: Request, key: str = Query(default="")):
     )
 
 
+@router.get("/iframe/calendario", response_class=HTMLResponse, include_in_schema=False)
+def iframe_calendario(request: Request, key: str = Query(default="")):
+    """Weekly calendar view for the Chatwoot Dashboard App (spike of the
+    client's request: dashboard calendar mirrored in the conversation view,
+    with drag to reschedule). Serves the prebuilt Svelte bundle from
+    app/static/calendar/iframe.html; the page reads the embed key from its
+    own query string and the contact from the appContext window event."""
+    settings: Settings = request.app.state.settings
+    headers = {"Content-Security-Policy": _frame_ancestors(settings)}
+    if not _autorizado(request, key):
+        return HTMLResponse("Forbidden", status_code=403, headers=headers)
+    html_path = Path(__file__).parent / "static" / "calendar" / "iframe.html"
+    if not html_path.exists():
+        return HTMLResponse("calendario no construido", status_code=404, headers=headers)
+    return HTMLResponse(html_path.read_text(encoding="utf-8"), headers=headers)
+
+
 def _serialize(reserva: Reserva) -> dict:
     return {
         "id": reserva.id,

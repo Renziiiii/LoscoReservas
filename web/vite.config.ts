@@ -12,6 +12,13 @@ export default defineConfig({
     outDir: "../app/static/calendar",
     emptyOutDir: true,
     assetsDir: "assets",
+    // Dos entradas: dashboard (index) e iframe de Chatwoot.
+    rollupOptions: {
+      input: {
+        main: new URL("./index.html", import.meta.url).pathname,
+        iframe: new URL("./iframe.html", import.meta.url).pathname,
+      },
+    },
   },
   server: {
     proxy: {
