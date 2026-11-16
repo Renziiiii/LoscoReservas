@@ -29,6 +29,7 @@
   let telefono = $state("");
   let estadoFuente = $state("esperando contexto de Chatwoot…");
   let avisos = $state<string[]>([]);
+  let seleccionada = $state<Reserva | null>(null);
   let reservas = $state<Reserva[]>([]);
   let cal = $state<Calendar>();
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -147,8 +148,7 @@
       crear(fechaISO(info.start), horaISO(info.start));
     },
     eventClick(info) {
-      const r = (info.event.extendedProps as { reserva: Reserva }).reserva;
-      avisar(`#${r.id} ${r.nombre}: ${r.personas}p · ${r.estado}${r.detalles ? ` · ${r.detalles}` : ""}`);
+      seleccionada = (info.event.extendedProps as { reserva: Reserva }).reserva;
     },
     eventDrop(info) {
       const r = (info.event.extendedProps as { reserva: Reserva }).reserva;
@@ -197,6 +197,43 @@
     {#each avisos as a}
       <div>{a}</div>
     {/each}
+  </div>
+{/if}
+
+{#if seleccionada}
+  <div class="mx-2 mt-2 rounded-lg border border-zinc-200 p-3 shadow-sm bg-white">
+    <div class="flex items-baseline justify-between gap-2">
+      <h3 class="text-sm font-semibold">{seleccionada.nombre}</h3>
+      <button
+        class="text-xs rounded px-2 py-0.5 border border-zinc-300 hover:bg-zinc-50"
+        onclick={() => (seleccionada = null)}
+      >Cerrar</button>
+    </div>
+    <dl class="mt-1.5 text-xs space-y-0.5">
+      <div class="flex justify-between gap-3">
+        <dt class="text-zinc-500">Estado</dt>
+        <dd class="font-medium" style="color: {COLORES_ESTADO[seleccionada.estado]?.bg}">{seleccionada.estado}</dd>
+      </div>
+      <div class="flex justify-between gap-3">
+        <dt class="text-zinc-500">Fecha</dt><dd>{seleccionada.fecha} {seleccionada.hora}</dd>
+      </div>
+      <div class="flex justify-between gap-3">
+        <dt class="text-zinc-500">Personas</dt><dd>{seleccionada.personas}</dd>
+      </div>
+      {#if seleccionada.planta}
+        <div class="flex justify-between gap-3">
+          <dt class="text-zinc-500">Piso</dt><dd>{seleccionada.planta}</dd>
+        </div>
+      {/if}
+      <div class="flex justify-between gap-3">
+        <dt class="text-zinc-500">Teléfono</dt><dd class="font-mono">{seleccionada.telefono}</dd>
+      </div>
+      {#if seleccionada.detalles}
+        <div class="flex justify-between gap-3">
+          <dt class="text-zinc-500">Detalle</dt><dd class="text-right">{seleccionada.detalles}</dd>
+        </div>
+      {/if}
+    </dl>
   </div>
 {/if}
 
