@@ -135,6 +135,11 @@
           <div class="flex justify-between gap-4">
             <dt class="text-zinc-500">Teléfono</dt><dd class="font-mono text-xs">{seleccionada.telefono}</dd>
           </div>
+          {#if seleccionada.detalles}
+            <div class="flex justify-between gap-4">
+              <dt class="text-zinc-500">Detalle</dt><dd class="text-right">{seleccionada.detalles}</dd>
+            </div>
+          {/if}
         </dl>
         <button
           class="mt-3 text-sm rounded-lg px-3 py-1.5 border border-zinc-300 hover:bg-zinc-50 active:bg-zinc-100"

@@ -49,7 +49,9 @@
   const events = $derived.by(() =>
     reservas.map((r) => ({
       id: String(r.id),
-      title: `${hhmm(r.hora)} ${r.nombre} · ${r.personas}p`,
+      // El horario lo renderiza la propia grilla; repetirlo en el título
+      // lo mostraba dos veces.
+      title: `${r.nombre} · ${r.personas}p`,
       start: `${r.fecha}T${hhmm(r.hora)}:00`,
       // `color` alimenta --fc-event-color: es de lo que toma el dot del
       // evento (month/multimonth). backgroundColor/borderColor colorean
