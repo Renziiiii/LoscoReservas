@@ -38,11 +38,21 @@
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
 
+  /** La API devuelve la hora con segundos ("21:00:00"); el datetime ISO
+   *  local quiere "HH:MM". Normaliza cualquier variante. */
+  function hhmm(h: string): string {
+    return h.slice(0, 5);
+  }
+
   const events = $derived.by(() =>
     reservas.map((r) => ({
       id: String(r.id),
-      title: `${r.nombre} · ${r.personas}p`,
-      start: `${r.fecha}T${r.hora}:00`,
+      title: `${hhmm(r.hora)} ${r.nombre} · ${r.personas}p`,
+      start: `${r.fecha}T${hhmm(r.hora)}:00`,
+      // `color` alimenta --fc-event-color: es de lo que toma el dot del
+      // evento (month/multimonth). backgroundColor/borderColor colorean
+      // el bloque en timeGrid. Sin `color`, el dot cae al primary del tema.
+      color: COLORES_ESTADO[r.estado].bg,
       backgroundColor: COLORES_ESTADO[r.estado].bg,
       borderColor: COLORES_ESTADO[r.estado].border,
       extendedProps: { reserva: r },
