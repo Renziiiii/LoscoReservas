@@ -134,10 +134,10 @@ def test_delete_htmx_returns_empty_fragment(browser, client):
 
 def test_brand_logo_links_back_home(browser):
     """L23: the brand is a link to / (now the calendar SPA, S1) so every
-    Jinja page (e.g. /nuevo) can navigate back; it just reads 'Losco'."""
+    Jinja page (e.g. /nuevo) can navigate back; it shows the logo + 'Losco'."""
     response = browser.get("/nuevo")
     assert response.status_code == 200
-    assert '<a class="brand" href="/">Losco</a>' in response.text
+    assert '<a class="brand" href="/"><img class="brand-logo" src="/static/LoscoLogo.jpg" alt="Losco">Losco</a>' in response.text
 
 
 def test_settings_redirects_to_ajustes(browser):
