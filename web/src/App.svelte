@@ -321,7 +321,7 @@
             <input class="rounded border border-zinc-300 px-2 py-1" type="text" bind:value={draft.nombre} required />
           </label>
           <label class="col-span-2 flex flex-col gap-1">
-            <span class="text-zinc-500">Teléfono (intl: +54 9 351 260-2003)</span>
+            <span class="text-zinc-500">Teléfono (ej: 5491234567890)</span>
             <input
               class="rounded border border-zinc-300 px-2 py-1 font-mono"
               type="text"

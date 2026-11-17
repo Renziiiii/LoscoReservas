@@ -222,10 +222,13 @@ from app.chatwoot import ChatwootClient
 class ChatwootPlantillasFake:
     """MockTransport-backed Chatwoot with canned inboxes + templates."""
 
-    def __init__(self, inboxes=None, plantillas_por_inbox=None):
+    def __init__(self, inboxes=None, plantillas_por_inbox=None, status_por_inbox=None):
         self.requests = []
         self.inboxes = inboxes or []
         self.plantillas_por_inbox = plantillas_por_inbox or {}
+        # inbox id -> HTTP status override (e.g. 404 for Chatwoot 4.x
+        # non-WhatsApp inboxes without cached templates)
+        self.status_por_inbox = status_por_inbox or {}
 
         def handler(request: httpx.Request) -> httpx.Response:
             self.requests.append((request.method, request.url.path))
@@ -234,6 +237,8 @@ class ChatwootPlantillasFake:
                 return httpx.Response(200, json={"payload": self.inboxes})
             if "/message_templates" in path:
                 inbox_id = int(path.split("/")[-2])
+                if inbox_id in self.status_por_inbox:
+                    return httpx.Response(self.status_por_inbox[inbox_id], json={})
                 if inbox_id in self.plantillas_por_inbox:
                     return httpx.Response(
                         200, json={"payload": self.plantillas_por_inbox[inbox_id]}
@@ -283,6 +288,32 @@ def test_plantillas_whatsapp_prefiere_inbox_whatsapp_nativo():
     # only the native WhatsApp inbox was queried (priority short-circuit)
     template_requests = [p for m, p in fake.requests if "message_templates" in p]
     assert template_requests == ["/api/v1/accounts/1/inboxes/5/message_templates"]
+
+
+def test_plantillas_whatsapp_salta_inbox_que_responde_404():
+    """Chatwoot 4.x answers 404 (not 422) for non-WhatsApp inboxes without
+    cached templates; skip it like any other non-WhatsApp inbox instead of
+    surfacing the raw error (user's test environment hit this)."""
+    fake = ChatwootPlantillasFake(
+        inboxes=[
+            {"id": 2, "channel_type": "Channel::Webhook"},
+            {"id": 5, "channel_type": "Channel::Whatsapp"},
+        ],
+        plantillas_por_inbox={5: PLANTILLAS},
+        status_por_inbox={2: 404},
+    )
+    plantillas = fake.client().plantillas_whatsapp()
+    assert [p["name"] for p in plantillas] == [
+        "reserva_confirmacion", "invitados_confirmacion",
+    ]
+
+
+def test_plantillas_whatsapp_devuelve_vacio_si_todos_fallan():
+    fake = ChatwootPlantillasFake(
+        inboxes=[{"id": 2, "channel_type": "Channel::Whatsapp"}],
+        status_por_inbox={2: 404},
+    )
+    assert fake.client().plantillas_whatsapp() == []
 
 
 def test_plantillas_whatsapp_salta_inboxes_que_no_son_de_whatsapp():

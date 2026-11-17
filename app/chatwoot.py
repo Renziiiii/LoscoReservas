@@ -183,13 +183,15 @@ class ChatwootClient:
     def plantillas_whatsapp(self) -> list[dict]:
         """Templates of the first inbox that answers, preferring native
         WhatsApp (Channel::Whatsapp), then Twilio, then anything else:
-        non-WhatsApp inboxes answer 422 and are skipped."""
+        non-WhatsApp inboxes answer 422 and are skipped. Chatwoot 4.x
+        answers 404 for inboxes without cached templates - skipped too
+        (the user's test environment hit this)."""
         for inbox in sorted(self.listar_inboxes(), key=_prioridad_inbox_whatsapp):
             try:
                 return self.listar_plantillas(inbox["id"])
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 422:
-                    continue  # not a WhatsApp inbox: try the next one
+                if exc.response.status_code in (404, 422):
+                    continue  # not a WhatsApp inbox / no cached templates
                 raise
         return []
 
