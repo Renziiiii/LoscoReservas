@@ -24,8 +24,8 @@ from app.ajustes import obtener_configuracion
 from app.chatwoot import ChatwootClient, variables_plantilla
 from app.config import Settings
 from app.db import get_session
-from app.etiquetas import etiquetar_confirmada, migrar_etiqueta
-from app.estados import estado_valido
+from app.etiquetas import migrar_etiqueta, sincronizar_estado_reserva
+from app.estados import estado_valido, mapa_etiquetas
 from app.models import EstadoReserva, Reserva
 from app.schemas import ReservaCreate
 from app.scheduler import parse_hora, reprogramar
@@ -156,8 +156,10 @@ def crear_reserva(request: Request, form: dict = Depends(_form_dict), session: S
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
-    config = obtener_configuracion(session, request.app.state.settings)
-    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
+    sincronizar_estado_reserva(
+        request.app.state.settings, reserva.telefono, mapa_etiquetas(session),
+        None, reserva.estado,
+    )
     return RedirectResponse("/", status_code=303)
 
 
@@ -171,14 +173,18 @@ def actualizar_reserva(
     reserva = session.get(Reserva, reserva_id)
     if reserva is None:
         return _not_found()
+    estado_anterior = reserva.estado
     payload, errors, values = _parse_form(form, session)
     if payload is None:
         return _render_form(request, reserva=reserva, session=session, errors=errors, values=values)
     for field, value in payload.model_dump().items():
         setattr(reserva, field, value)
     session.commit()
-    config = obtener_configuracion(session, request.app.state.settings)
-    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
+    session.refresh(reserva)
+    sincronizar_estado_reserva(
+        request.app.state.settings, reserva.telefono, mapa_etiquetas(session),
+        estado_anterior, reserva.estado,
+    )
     return RedirectResponse("/", status_code=303)
 
 

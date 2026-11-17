@@ -30,12 +30,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ajustes import obtener_configuracion
 from app.config import Settings
 from app.contactos import sincronizar_telefono_contacto
 from app.db import get_session
-from app.estados import estado_valido
-from app.etiquetas import etiquetar_confirmada
+from app.estados import estado_valido, mapa_etiquetas
+from app.etiquetas import sincronizar_estado_reserva
 from app.models import EstadoReserva, Reserva
 from app.schemas import ReservaCreateIframe, ReservaUpdateIframe
 
@@ -145,12 +144,15 @@ def iframe_reservas_create(
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
-    config = obtener_configuracion(session, settings)
     if payload.contacto_chatwoot_id:
         sincronizar_telefono_contacto(
             settings, payload.contacto_chatwoot_id, reserva.telefono
         )
-    etiquetar_confirmada(settings, reserva, config.etiqueta_confirmada)
+    sincronizar_estado_reserva(
+        settings, reserva.telefono, mapa_etiquetas(session),
+        None, reserva.estado,
+        contacto_id=payload.contacto_chatwoot_id,
+    )
     return JSONResponse(_serialize(reserva), status_code=201, headers=headers)
 
 
@@ -174,6 +176,7 @@ def iframe_reservas_patch(
     reserva = session.get(Reserva, reserva_id)
     if reserva is None:
         return JSONResponse({"detail": "not found"}, status_code=404, headers=headers)
+    estado_anterior = reserva.estado
     datos = payload.model_dump(exclude_unset=True)
     contacto_chatwoot_id = datos.pop("contacto_chatwoot_id", None)
     try:
@@ -185,12 +188,15 @@ def iframe_reservas_patch(
         setattr(reserva, field, value)
     session.commit()
     session.refresh(reserva)
-    config = obtener_configuracion(session, settings)
     if "telefono" in datos and contacto_chatwoot_id:
         sincronizar_telefono_contacto(
             settings, contacto_chatwoot_id, reserva.telefono
         )
-    etiquetar_confirmada(settings, reserva, config.etiqueta_confirmada)
+    sincronizar_estado_reserva(
+        settings, reserva.telefono, mapa_etiquetas(session),
+        estado_anterior, reserva.estado,
+        contacto_id=contacto_chatwoot_id,
+    )
     return JSONResponse(_serialize(reserva), status_code=200, headers=headers)
 
 

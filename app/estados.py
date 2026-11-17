@@ -89,6 +89,13 @@ def _fila(estado: EstadoReserva) -> dict:
     }
 
 
+def mapa_etiquetas(session: Session) -> dict[str, str | None]:
+    """estado slug -> Chatwoot label (None when unmapped) — the shape the
+    sync service in app/etiquetas.py consumes (T2)."""
+    filas = session.scalars(select(EstadoReserva))
+    return {e.slug: e.etiqueta_chatwoot for e in filas}
+
+
 @router.get("", summary="Estados de reserva configurados (con su tag de Chatwoot)")
 def listar_estados(session: Session = Depends(get_session)):
     return [_fila(e) for e in session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))]

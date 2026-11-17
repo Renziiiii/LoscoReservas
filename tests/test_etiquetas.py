@@ -1,22 +1,39 @@
-"""T14 tests (S10/L21): reservas confirmadas get the configured
-confirmed-reservation label on their Chatwoot contact. Fail-soft: without a
-Chatwoot token (L6) or on any API error, saving the reservation must still
-succeed."""
+"""Tests del motor de sincronización de etiquetas (T2, S5/D1/D2,
+odd/tasks/tags-estados-sync.md) + API de labels de conversación (T16) +
+integración de los caminos de escritura.
+
+Contrato nuevo (reemplaza a etiquetar_confirmada):
+- `sincronizar_estado_reserva`: al cambiar el estado de una reserva, la
+  etiqueta del estado ANTERIOR se RETIRA (D1) y la del estado NUEVO se
+  aplica, en el CONTACTO y en TODAS sus conversaciones existentes (no solo
+  la abierta más reciente: incluye resueltas y otros canales, S5).
+- `sincronizar_conversacion_nueva`: una conversación recién creada recibe
+  TODAS las etiquetas actuales del contacto (D2/S6), mapeadas o añadidas
+  por agentes.
+
+Fail-soft (L6): sin Chatwoot configurado, sin contacto, o ante cualquier
+error de API, nada explota y el guardado de la reserva sigue.
+"""
+
+import json
 
 import httpx
-import json
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.ajustes import obtener_configuracion
-from app.etiquetas import etiquetar_confirmada
+from app.etiquetas import (
+    sincronizar_conversacion_nueva,
+    sincronizar_estado_reserva,
+)
 from app.main import create_app
-from app.models import Configuracion, Reserva
 
 TEST_USERS = "valen:testpass123"
 SECRET = "test-secret-0123456789abcdef0123456789abcdef"
-DEFAULT_ETIQUETA = "Reserva confirmada"
+ETIQUETA_CONFIRMA = "reserva-confirmada"
+ETIQUETA_CANCELA = "reserva-cancelada"
+
+CONTACT = {"id": 77, "phone_number": "+5491111111111", "name": "Juan Pérez"}
 
 
 def _settings(tmp_path, **overrides) -> Settings:
@@ -30,89 +47,7 @@ def _settings(tmp_path, **overrides) -> Settings:
     return Settings(**defaults)
 
 
-class ChatwootLabelsFake:
-    """MockTransport-backed Chatwoot with canned contact + contact labels.
-
-    The real API OVERWRITES the whole label list on POST, so the client must
-    merge: the fake asserts the merge by returning the previously set list.
-    """
-
-    def __init__(
-        self,
-        contact=None,
-        labels=None,
-        conversation=None,
-        conversation_labels=None,
-        post_fails=False,
-        post_conversation_fails=False,
-    ):
-        self.requests = []
-        self.contact = contact
-        self.labels = labels if labels is not None else ["vip"]
-        self.conversation = conversation
-        self.conversation_labels = conversation_labels if conversation_labels is not None else []
-        self.post_fails = post_fails
-        self.post_conversation_fails = post_conversation_fails
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            self.requests.append((request.method, request.url.path, request.read()))
-            path = request.url.path
-            if path.endswith("/contacts/search"):
-                if self.contact is None:
-                    return httpx.Response(200, json={"payload": []})
-                return httpx.Response(200, json={"payload": [self.contact]})
-            if "/contacts/" in path and "/conversations" in path and request.method == "GET":
-                payload = [self.conversation] if self.conversation is not None else []
-                return httpx.Response(200, json={"payload": payload})
-            if "/contacts/" in path and "/labels" in path:
-                if request.method == "GET":
-                    return httpx.Response(200, json={"payload": self.labels})
-                if request.method == "POST":
-                    if self.post_fails:
-                        return httpx.Response(500, json={})
-                    self.labels = json.loads(request.content)["labels"]
-                    return httpx.Response(200, json={"payload": self.labels})
-            if "/conversations/" in path and "/labels" in path:
-                if request.method == "GET":
-                    return httpx.Response(200, json={"payload": self.conversation_labels})
-                if request.method == "POST":
-                    if self.post_conversation_fails:
-                        return httpx.Response(500, json={})
-                    self.conversation_labels = json.loads(request.content)["labels"]
-                    return httpx.Response(200, json={"payload": self.conversation_labels})
-            return httpx.Response(404, json={})
-
-        self.transport = httpx.MockTransport(handler)
-
-    def client(self):
-        from app.chatwoot import ChatwootClient
-
-        return ChatwootClient(
-            base_url="http://chatwoot.test", api_token="token-x", account_id=1,
-            transport=self.transport,
-        )
-
-
-CONTACT = {"id": 77, "phone_number": "+5491111111111", "name": "Juan Pérez"}
-CONVERSATION = {
-    "id": 88,
-    "status": "open",
-    "last_non_activity_message_at": 1700000000,
-}
-
-
-def _reserva(estado="confirmada"):
-    return Reserva(
-        nombre="Juan Pérez",
-        telefono="+5491111111111",
-        fecha="2026-12-24",
-        hora="21:00",
-        personas=4,
-        estado=estado,
-    )
-
-
-def _chatwoot_settings(tmp_path):
+def _chatwoot_settings(tmp_path) -> Settings:
     return _settings(
         tmp_path,
         chatwoot_base_url="http://chatwoot.test",
@@ -121,159 +56,232 @@ def _chatwoot_settings(tmp_path):
     )
 
 
-# --- unit: the labeling service ---
+class ChatwootSyncFake:
+    """MockTransport-backed Chatwoot: contacto + labels de contacto +
+    N conversaciones (cualquier estado) con sus propias labels. POST
+   Reemplaza la lista completa (semántica real de Chatwoot) y la guarda."""
+
+    def __init__(self, contact=CONTACT, contact_labels=None, conversations=None,
+                 contact_post_fails=False, conversation_post_fail_id=None):
+        self.requests = []
+        self.contact = contact
+        self.contact_labels = list(contact_labels or [])
+        self.conversations = [dict(c) for c in (conversations or [])]
+        self.conv_labels = {
+            c["id"]: list(c.get("labels") or []) for c in self.conversations
+        }
+        self.contact_post_fails = contact_post_fails
+        self.conversation_post_fail_id = conversation_post_fail_id
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append((request.method, request.url.path))
+            path = request.url.path
+            if path.endswith("/contacts/search"):
+                payload = [self.contact] if self.contact else []
+                return httpx.Response(200, json={"payload": payload})
+            if "/contacts/" in path and "/conversations" not in path and "/labels" not in path and request.method == "GET":
+                # show endpoint: the contact DIRECTLY in payload (or empty when missing)
+                return httpx.Response(200, json={"payload": self.contact or {}})
+            if "/contacts/" in path and "/conversations" in path and request.method == "GET":
+                return httpx.Response(200, json={"payload": self.conversations})
+            if "/contacts/" in path and path.endswith("/labels"):
+                if request.method == "GET":
+                    return httpx.Response(200, json={"payload": self.contact_labels})
+                if self.contact_post_fails:
+                    return httpx.Response(500, json={})
+                self.contact_labels = json.loads(request.content)["labels"]
+                return httpx.Response(200, json={"payload": self.contact_labels})
+            if "/conversations/" in path and path.endswith("/labels"):
+                conv_id = int(path.split("/conversations/")[1].split("/")[0])
+                if request.method == "GET":
+                    return httpx.Response(
+                        200, json={"payload": self.conv_labels.get(conv_id, [])}
+                    )
+                if conv_id == self.conversation_post_fail_id:
+                    return httpx.Response(500, json={})
+                self.conv_labels[conv_id] = json.loads(request.content)["labels"]
+                return httpx.Response(200, json={"payload": self.conv_labels[conv_id]})
+            return httpx.Response(404, json={})
+
+        self.transport = httpx.MockTransport(handler)
 
 
-def test_no_etiqueta_si_estado_no_es_confirmada(tmp_path):
-    fake = ChatwootLabelsFake(contact=CONTACT)
-    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(estado="pendiente"), DEFAULT_ETIQUETA) is False
-    assert fake.requests == []
-
-
-def test_no_etiqueta_si_chatwoot_no_configurado(tmp_path):
-    """L6: without a token nothing explodes and nothing is sent."""
-    assert etiquetar_confirmada(_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA) is False
-
-
-def test_etiqueta_merges_con_labels_existentes(tmp_path):
-    """The API overwrites the list, so existing labels must be preserved."""
-    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip", "cumple"])
-    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport)
-    assert ok is True
-    posts = [r for r in fake.requests if r[0] == "POST"]
-    assert len(posts) == 1
-    import json
-
-    body = json.loads(posts[0][2])
-    assert body["labels"] == ["vip", "cumple", DEFAULT_ETIQUETA]
-
-
-def test_etiqueta_personalizada_merges_con_labels_existentes(tmp_path):
-    """L24: the label name comes from configuration, not a hard-coded constant."""
-    etiqueta = "Mesa VIP"
-    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip"])
-    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), etiqueta, transport=fake.transport)
-    assert ok is True
-    posts = [r for r in fake.requests if r[0] == "POST"]
-    assert len(posts) == 1
-    import json
-
-    assert etiqueta in json.loads(posts[0][2])["labels"]
-
-
-def test_etiqueta_no_re_postea_si_ya_la_tiene(tmp_path):
-    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip", DEFAULT_ETIQUETA])
-    ok = etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport)
-    assert ok is True
-    assert not [r for r in fake.requests if r[0] == "POST"]
-
-
-def test_etiqueta_sin_contacto_en_chatwoot_es_fail_soft(tmp_path):
-    fake = ChatwootLabelsFake(contact=None)
-    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport) is False
-    assert not [r for r in fake.requests if r[0] == "POST"]
-
-
-def test_etiqueta_error_http_es_fail_soft(tmp_path):
-    fake = ChatwootLabelsFake(contact=CONTACT, post_fails=True)
-    assert etiquetar_confirmada(_chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport) is False
-
-
-def test_etiqueta_tambien_aplica_a_conversacion_abierta(tmp_path):
-    """L27: the confirmed label must also reach the open conversation."""
-    fake = ChatwootLabelsFake(
-        contact=CONTACT,
-        labels=["vip"],
-        conversation=CONVERSATION,
-        conversation_labels=["pendiente"],
-    )
-    ok = etiquetar_confirmada(
-        _chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport
-    )
-    assert ok is True
-    conv_posts = [r for r in fake.requests if r[0] == "POST" and "/conversations/" in r[1]]
-    assert len(conv_posts) == 1
-    assert DEFAULT_ETIQUETA in json.loads(conv_posts[0][2])["labels"]
-
-
-def test_etiqueta_conversacion_idempotente(tmp_path):
-    """If the conversation already has the label, do not POST again."""
-    fake = ChatwootLabelsFake(
-        contact=CONTACT,
-        labels=["vip", DEFAULT_ETIQUETA],
-        conversation=CONVERSATION,
-        conversation_labels=[DEFAULT_ETIQUETA],
-    )
-    ok = etiquetar_confirmada(
-        _chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport
-    )
-    assert ok is True
-    assert not [r for r in fake.requests if r[0] == "POST" and "/conversations/" in r[1]]
-
-
-def test_etiqueta_sin_conversacion_abierta_pero_contacto_ok(tmp_path):
-    """No open conversation is a soft skip; the contact label still counts."""
-    fake = ChatwootLabelsFake(contact=CONTACT, labels=["vip"], conversation=None)
-    ok = etiquetar_confirmada(
-        _chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport
-    )
-    assert ok is True
-    contact_posts = [r for r in fake.requests if r[0] == "POST" and "/contacts/" in r[1]]
-    assert len(contact_posts) == 1
-
-
-def test_etiqueta_conversacion_error_http_es_fail_soft(tmp_path):
-    """A conversation-label failure must not undo the contact label."""
-    fake = ChatwootLabelsFake(
-        contact=CONTACT,
-        labels=["vip"],
-        conversation=CONVERSATION,
-        conversation_labels=["pendiente"],
-        post_conversation_fails=True,
-    )
-    ok = etiquetar_confirmada(
-        _chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport
-    )
-    assert ok is True
-
-
-def test_etiqueta_retorna_true_si_solo_conversacion_succeeds(tmp_path):
-    """Conversation labeling can succeed even when contact labeling fails."""
-    fake = ChatwootLabelsFake(
-        contact=CONTACT,
-        labels=["vieja"],
-        conversation=CONVERSATION,
-        conversation_labels=["pendiente"],
-        post_fails=True,
-    )
-    ok = etiquetar_confirmada(
-        _chatwoot_settings(tmp_path), _reserva(), DEFAULT_ETIQUETA, transport=fake.transport
-    )
-    assert ok is True
-    conv_posts = [r for r in fake.requests if r[0] == "POST" and "/conversations/" in r[1]]
-    assert len(conv_posts) == 1
-
-
-# --- integration: every write path triggers it ---
-
-MONKEYPATCH_TARGETS = {
-    "dashboard": "app.dash",
-    "iframe": "app.iframe",
-    "api": "app.reservas",
+# mapa estado -> etiqueta de Chatwoot (como lo arma mapa_etiquetas(session))
+MAPA = {
+    "pendiente": None,
+    "confirmada": ETIQUETA_CONFIRMA,
+    "cancelada": ETIQUETA_CANCELA,
 }
+
+CONVS = [
+    {"id": 88, "status": "open", "labels": ["vip"]},          # IG abierta
+    {"id": 99, "status": "resolved", "labels": []},           # WSP cerrada
+    {"id": 101, "status": "pending", "labels": ["vip"]},      # otro canal
+]
+
+
+# --- S5/D1: sincronizar_estado_reserva ---
+
+def test_sync_agrega_al_contacto_y_a_todas_las_conversaciones(tmp_path):
+    fake = ChatwootSyncFake(contact_labels=["vip"], conversations=CONVS)
+    ok = sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), CONTACT["phone_number"],
+        MAPA, "pendiente", "confirmada", transport=fake.transport,
+    )
+    assert ok is True
+    assert ETIQUETA_CONFIRMA in fake.contact_labels
+    assert all(ETIQUETA_CONFIRMA in fake.conv_labels[cid] for cid in (88, 99, 101))
+
+
+def test_sync_reemplaza_quita_la_del_estado_anterior(tmp_path):
+    """D1: confirmada → cancelada retira la etiqueta vieja y aplica la nueva,
+    en el contacto y en TODAS las conversaciones."""
+    fake = ChatwootSyncFake(
+        contact_labels=["vip", ETIQUETA_CONFIRMA],
+        conversations=[dict(c, labels=list(c["labels"]) + ([ETIQUETA_CONFIRMA] if c["id"] != 99 else [])) for c in CONVS],
+    )
+    ok = sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), CONTACT["phone_number"],
+        MAPA, "confirmada", "cancelada", transport=fake.transport,
+    )
+    assert ok is True
+    assert ETIQUETA_CONFIRMA not in fake.contact_labels
+    assert ETIQUETA_CANCELA in fake.contact_labels
+    assert "vip" in fake.contact_labels  # conserva el resto
+    for cid in (88, 99, 101):
+        assert ETIQUETA_CONFIRMA not in fake.conv_labels[cid]
+        assert ETIQUETA_CANCELA in fake.conv_labels[cid]
+
+
+def test_sync_idempotente_no_repostea(tmp_path):
+    """Estado igual y etiquetas ya puestas → cero POST."""
+    _labels = ["vip", ETIQUETA_CONFIRMA]
+    fake = ChatwootSyncFake(
+        contact_labels=_labels,
+        conversations=[dict(c, labels=list(_labels)) for c in CONVS],
+    )
+    ok = sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), CONTACT["phone_number"],
+        MAPA, "confirmada", "confirmada", transport=fake.transport,
+    )
+    posts = [r for r in fake.requests if r[0] == "POST"]
+    assert posts == []
+    assert ok is True
+
+
+def test_sync_sin_etiquetas_mapeadas_no_llama_la_api(tmp_path):
+    """Ninguna de las dos etiquetas existe → ni siquiera consulta Chatwoot."""
+    fake = ChatwootSyncFake()
+    mapa = {"pendiente": None, "confirmada": None, "cancelada": None}
+    ok = sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), CONTACT["phone_number"],
+        mapa, "pendiente", "confirmada", transport=fake.transport,
+    )
+    assert fake.requests == []
+    assert ok is True
+
+
+def test_sync_fail_soft_sin_chatwoot(tmp_path):
+    """L6: sin credenciales no explota ni llama nada."""
+    assert sincronizar_estado_reserva(
+        _settings(tmp_path), CONTACT["phone_number"], MAPA,
+        "pendiente", "confirmada",
+    ) is False
+
+
+def test_sync_fail_soft_sin_contacto(tmp_path):
+    fake = ChatwootSyncFake(contact=None)
+    assert sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), CONTACT["phone_number"],
+        MAPA, "pendiente", "confirmada", transport=fake.transport,
+    ) is False
+
+
+def test_sync_falla_de_una_conversacion_no_bloquean_las_demas(tmp_path):
+    """Per-item failures are logged and the rest keep synchronizing."""
+    fake = ChatwootSyncFake(
+        conversations=CONVS, conversation_post_fail_id=88,
+    )
+    ok = sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), CONTACT["phone_number"],
+        MAPA, "pendiente", "confirmada", transport=fake.transport,
+    )
+    assert ok is True
+    assert ETIQUETA_CONFIRMA not in fake.conv_labels[88]
+    assert ETIQUETA_CONFIRMA in fake.conv_labels[99]
+    assert ETIQUETA_CONFIRMA in fake.conv_labels[101]
+    assert ETIQUETA_CONFIRMA in fake.contact_labels
+
+
+def test_sync_usa_contacto_id_directo(tmp_path):
+    """When the caller already knows the Chatwoot contact id, skip search."""
+    fake = ChatwootSyncFake(contact_labels=[], conversations=CONVS)
+    ok = sincronizar_estado_reserva(
+        _chatwoot_settings(tmp_path), "otro-telefono-distinto",
+        MAPA, "pendiente", "confirmada", contacto_id=77, transport=fake.transport,
+    )
+    assert ok is True
+    paths = [r[1] for r in fake.requests]
+    assert not any(p.endswith("/contacts/search") for p in paths)
+
+
+# --- S6/D2: sincronizar_conversacion_nueva ---
+
+def test_conv_nueva_copia_todas_las_etiquetas_del_contacto(tmp_path):
+    fake = ChatwootSyncFake(contact_labels=["vip", ETIQUETA_CONFIRMA])
+    ok = sincronizar_conversacion_nueva(
+        _chatwoot_settings(tmp_path), 99, contacto_id=77, transport=fake.transport,
+    )
+    assert ok is True
+    assert fake.conv_labels[99] == ["vip", ETIQUETA_CONFIRMA]
+
+
+def test_conv_nueva_idempotente(tmp_path):
+    fake = ChatwootSyncFake(
+        contact_labels=["vip"],
+        conversations=[{"id": 99, "status": "open", "labels": ["vip", "extra"]}],
+    )
+    ok = sincronizar_conversacion_nueva(
+        _chatwoot_settings(tmp_path), 99, contacto_id=77, transport=fake.transport,
+    )
+    assert ok is False  # nada faltaba; no POST
+    assert fake.conv_labels[99] == ["vip", "extra"]
+
+
+def test_conv_nueva_resuelve_contacto_por_telefono(tmp_path):
+    fake = ChatwootSyncFake(contact_labels=["vip"])
+    ok = sincronizar_conversacion_nueva(
+        _chatwoot_settings(tmp_path), 99,
+        telefono=CONTACT["phone_number"], transport=fake.transport,
+    )
+    assert ok is True
+    assert "vip" in fake.conv_labels[99]
+
+
+def test_conv_nueva_fail_soft(tmp_path):
+    assert sincronizar_conversacion_nueva(_settings(tmp_path), 99) is False
+    fake = ChatwootSyncFake(contact=None)
+    assert sincronizar_conversacion_nueva(
+        _chatwoot_settings(tmp_path), 99,
+        telefono=CONTACT["phone_number"], transport=fake.transport,
+    ) is False
+
+
+# --- integración: los caminos de escritura capturan estado_anterior ---
+
+MONKEYPATCH_TARGETS = ("app.dash", "app.iframe", "app.reservas")
 
 
 @pytest.fixture()
-def etiqueta_spy(monkeypatch):
-    """Replaces the labeling service with a spy recording calls per module."""
+def sync_spy(monkeypatch):
     calls = []
 
-    def spy(settings, reserva, etiqueta):
-        calls.append((reserva.telefono, reserva.estado, etiqueta))
+    def spy(settings, telefono, mapa, estado_anterior, estado_nuevo, contacto_id=None, transport=None):
+        calls.append((telefono, estado_anterior, estado_nuevo))
         return True
 
-    for target in ("app.dash", "app.iframe", "app.reservas"):
-        monkeypatch.setattr(f"{target}.etiquetar_confirmada", spy)
+    for target in MONKEYPATCH_TARGETS:
+        monkeypatch.setattr(f"{target}.sincronizar_estado_reserva", spy)
     return calls
 
 
@@ -303,24 +311,22 @@ BASE_PAYLOAD = {
 }
 
 
-def test_dashboard_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
+def test_dashboard_crear_y_confirmar_sync(tmp_path, sync_spy):
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
         _login_page(client)
         created = client.post("/reservas", data=BASE_PAYLOAD, follow_redirects=False)
         assert created.status_code == 303
-        # the hook fires on every save; the estado filter lives inside the
-        # service (pinned by the unit tests above)
-        assert etiqueta_spy == [("+5491111111111", "pendiente", DEFAULT_ETIQUETA)]
-
+        # alta directa: no hay estado anterior (None) — nada que quitar
+        assert sync_spy == [("+5491111111111", None, "pendiente")]
         response = client.post(
             "/reservas/1", data=dict(BASE_PAYLOAD, estado="confirmada"), follow_redirects=False
         )
         assert response.status_code == 303
-        assert etiqueta_spy[-1] == ("+5491111111111", "confirmada", DEFAULT_ETIQUETA)
+        assert sync_spy[-1] == ("+5491111111111", "pendiente", "confirmada")
 
 
-def test_iframe_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
+def test_iframe_crear_sync(tmp_path, sync_spy):
     app = create_app(_settings(tmp_path, iframe_key="embedkey"))
     with TestClient(app) as client:
         created = client.post(
@@ -329,114 +335,21 @@ def test_iframe_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
             json=dict(BASE_PAYLOAD, estado="confirmada"),
         )
         assert created.status_code == 201, created.text
-        assert etiqueta_spy == [("+5491111111111", "confirmada", DEFAULT_ETIQUETA)]
+        assert sync_spy == [("+5491111111111", None, "confirmada")]  # alta directa
 
 
-def test_api_confirmar_reserva_etiqueta(tmp_path, etiqueta_spy):
+def test_api_patch_estado_sync(tmp_path, sync_spy):
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
         _login(client)
-        created = client.post("/api/reservas", json=dict(BASE_PAYLOAD, estado="confirmada"))
+        created = client.post("/api/reservas", json=BASE_PAYLOAD)
         assert created.status_code == 201, created.text
-        assert etiqueta_spy == [("+5491111111111", "confirmada", DEFAULT_ETIQUETA)]
-
-        etiqueta_spy.clear()
-        patched = client.patch("/api/reservas/1", json={"estado": "pendiente"})
+        sync_spy.clear()
+        patched = client.patch("/api/reservas/1", json={"estado": "confirmada"})
         assert patched.status_code == 200
-        assert etiqueta_spy[-1] == ("+5491111111111", "pendiente", DEFAULT_ETIQUETA)  # service filters
-
-
-def test_api_usa_etiqueta_configurada_en_db(tmp_path, etiqueta_spy):
-    """L24: write paths must read the label from DB configuration."""
-    etiqueta_custom = "Confirmada Losco"
-    app = create_app(_settings(tmp_path))
-    with TestClient(app) as client:
-        with client.app.state.sessionmaker() as session:
-            config = obtener_configuracion(session, app.state.settings)
-            config.etiqueta_confirmada = etiqueta_custom
-            session.commit()
-        _login(client)
-        created = client.post("/api/reservas", json=dict(BASE_PAYLOAD, estado="confirmada"))
-        assert created.status_code == 201, created.text
-        assert etiqueta_spy == [("+5491111111111", "confirmada", etiqueta_custom)]
-
-
-# --- T16: conversation labels API (S10/L27) ---
-
-
-class ChatwootConversacionesFake:
-    """MockTransport-backed Chatwoot for conversation label endpoints."""
-
-    def __init__(self, conversaciones=None):
-        self.requests = []
-        self.conversaciones = conversaciones or []
-        self.labels_por_conversacion: dict[int, list[str]] = {}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            self.requests.append((request.method, request.url.path, request.url.query.decode()))
-            path = request.url.path
-            if path.endswith("/conversations") and request.method == "GET":
-                label = request.url.params.get("labels[]")
-                page = request.url.params.get("page")
-                if page != "1":
-                    return httpx.Response(200, json={"payload": []})
-                coinciden = [
-                    c for c in self.conversaciones if label in (c.get("labels") or [])
-                ]
-                return httpx.Response(200, json={"payload": coinciden})
-            if "/conversations/" in path and "/labels" in path and request.method == "GET":
-                conv_id = int(path.split("/conversations/")[1].split("/")[0])
-                return httpx.Response(
-                    200, json={"payload": self.labels_por_conversacion.get(conv_id, [])}
-                )
-            if "/conversations/" in path and "/labels" in path and request.method == "POST":
-                conv_id = int(path.split("/conversations/")[1].split("/")[0])
-                labels = json.loads(request.content)["labels"]
-                self.labels_por_conversacion[conv_id] = labels
-                return httpx.Response(200, json={"payload": labels})
-            return httpx.Response(404, json={})
-
-        self.transport = httpx.MockTransport(handler)
-
-    def client(self):
-        from app.chatwoot import ChatwootClient
-
-        return ChatwootClient(
-            base_url="http://chatwoot.test", api_token="token-x", account_id=1,
-            transport=self.transport,
-        )
-
-
-def test_listar_labels_conversacion():
-    fake = ChatwootConversacionesFake()
-    fake.labels_por_conversacion[5] = ["vip", DEFAULT_ETIQUETA]
-    assert fake.client().listar_labels_conversacion(5) == ["vip", DEFAULT_ETIQUETA]
-
-
-def test_agregar_labels_conversacion_reemplaza_toda_la_lista():
-    fake = ChatwootConversacionesFake()
-    fake.labels_por_conversacion[5] = ["vip"]
-    result = fake.client().agregar_labels_conversacion(5, ["vip", DEFAULT_ETIQUETA])
-    assert result == ["vip", DEFAULT_ETIQUETA]
-    assert fake.labels_por_conversacion[5] == ["vip", DEFAULT_ETIQUETA]
-
-
-def test_conversaciones_con_etiqueta_verifica_lado_cliente():
-    """The labels[] filter shape is unverified live: drop API noise."""
-    fake = ChatwootConversacionesFake(
-        conversaciones=[
-            {"id": 1, "labels": [DEFAULT_ETIQUETA]},
-            {"id": 2, "labels": ["vip"]},  # API noise: no tiene la etiqueta
-        ]
-    )
-    convs = fake.client().conversaciones_con_etiqueta(DEFAULT_ETIQUETA)
-    assert [c["id"] for c in convs] == [1]
-
-
-def test_conversaciones_con_etiqueta_para_en_payload_vacio():
-    """Pagination loops while a page is non-empty (safety cap)."""
-    fake = ChatwootConversacionesFake(conversaciones=[{"id": 10, "labels": [DEFAULT_ETIQUETA]}])
-    convs = fake.client().conversaciones_con_etiqueta(DEFAULT_ETIQUETA)
-    assert [c["id"] for c in convs] == [10]
-    pages = {query for (method, path, query) in fake.requests if path.endswith("/conversations")}
-    assert any("page=1" in query for query in pages)
+        assert sync_spy == [("+5491111111111", "pendiente", "confirmada")]
+        sync_spy.clear()
+        # sin cambio de estado: el sync corre igual (idempotente adentro)
+        patched = client.patch("/api/reservas/1", json={"personas": 6})
+        assert patched.status_code == 200
+        assert sync_spy == [("+5491111111111", "confirmada", "confirmada")]

@@ -4,11 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ajustes import obtener_configuracion
 from app.chatwoot import ChatwootClient
 from app.db import get_session
-from app.estados import estado_valido
-from app.etiquetas import etiquetar_confirmada
+from app.etiquetas import sincronizar_estado_reserva
+from app.estados import estado_valido, mapa_etiquetas
 from app.models import Reserva
 from app.schemas import ReservaOut, ReservaCreate, ReservaUpdate
 
@@ -33,8 +32,10 @@ def create_reserva(
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
-    config = obtener_configuracion(session, request.app.state.settings)
-    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
+    sincronizar_estado_reserva(
+        request.app.state.settings, reserva.telefono, mapa_etiquetas(session),
+        None, reserva.estado,
+    )
     return reserva
 
 
@@ -79,6 +80,7 @@ def update_reserva(
     session: Session = Depends(get_session),
 ):
     reserva = _get_or_404(reserva_id, session)
+    estado_anterior = reserva.estado
     changes = payload.model_dump(exclude_unset=True)
     if "estado" in changes:
         estado_valido(session, changes["estado"])
@@ -86,8 +88,10 @@ def update_reserva(
         setattr(reserva, field, value)
     session.commit()
     session.refresh(reserva)
-    config = obtener_configuracion(session, request.app.state.settings)
-    etiquetar_confirmada(request.app.state.settings, reserva, config.etiqueta_confirmada)
+    sincronizar_estado_reserva(
+        request.app.state.settings, reserva.telefono, mapa_etiquetas(session),
+        estado_anterior, reserva.estado,
+    )
     return reserva
 
 
