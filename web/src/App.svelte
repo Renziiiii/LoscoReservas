@@ -261,6 +261,9 @@
   });
 </script>
 
+<!-- L14: layout de alto fijo — header + leyenda fijos, el resto scrollea
+por dentro de cada columna; nada se sale del viewport. -->
+<div class="flex h-screen flex-col overflow-hidden">
 <header class="flex items-baseline gap-3 px-5 py-3 border-b border-zinc-200">
   <span class="text-xl font-semibold tracking-wide">Losco</span>
   <span class="text-sm text-zinc-500">Reservas</span>
@@ -275,8 +278,8 @@
   {/each}
 </div>
 
-<main class="grid grid-cols-1 lg:grid-cols-4 gap-4 p-5 items-start">
-  <div class="lg:col-span-3">
+<main class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 lg:flex-row lg:overflow-hidden">
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
     <CalendarioReservas
     {reservas}
     onDatesSet={(inicio, fin) => {
@@ -292,7 +295,7 @@
     />
   </div>
 
-  <aside class="space-y-4">
+  <aside class="flex w-full shrink-0 flex-col gap-4 lg:w-80 lg:overflow-y-auto">
     {#if toast}
       <div
         class="rounded-lg px-3 py-2 text-sm {toast.tipo === 'ok' ? 'text-teal-800 bg-teal-50' : 'text-red-800 bg-red-50'}"
@@ -394,6 +397,7 @@
     {/if}
   </aside>
 </main>
+</div>
 
 <!-- S8 (L10): icono de engranaje, lado izquierdo abajo → /settings -->
 <a

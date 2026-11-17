@@ -75,7 +75,10 @@
       right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listWeek",
     },
     buttonText: { today: "Hoy", year: "Año", month: "Mes", week: "Semana", day: "Día", list: "Lista" },
-    height: "auto",
+    // L14: alto fijo — el calendario ocupa el alto restante de la pantalla
+    // y scrollea por dentro (mismo criterio que el iframe), nada se sale
+    // del viewport.
+    height: "100%",
     dayMaxEvents: true,
 
     // --- Interactividad (esto es lo que faltaba) ---
