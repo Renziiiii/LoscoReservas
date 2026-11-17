@@ -1011,8 +1011,14 @@ def test_api_ajustes_requires_auth(anon_client):
 
 def test_api_ajustes_get_returns_messaging_config(client):
     body = client.get("/api/ajustes").json()
-    assert set(body) == {"hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados"}
-    assert body["hora_confirmacion"]
+    assert set(body) == {
+        "hora_confirmacion",
+        "hora_invitados",
+        "plantilla_confirmacion",
+        "plantilla_invitados",
+        "etiqueta_confirmada",
+    }
+    assert body["etiqueta_confirmada"]
 
 
 def test_api_ajustes_put_saves_and_returns_updated(client):
@@ -1023,12 +1029,14 @@ def test_api_ajustes_put_saves_and_returns_updated(client):
             "hora_invitados": "17:45",
             "plantilla_confirmacion": "conf_new",
             "plantilla_invitados": "inv_new",
+            "etiqueta_confirmada": "Reserva OK",
         },
     )
     assert response.status_code == 200
     assert response.json()["hora_confirmacion"] == "08:30"
     body = client.get("/api/ajustes").json()
     assert body["plantilla_invitados"] == "inv_new"
+    assert body["etiqueta_confirmada"] == "Reserva OK"
 
 
 def test_api_ajustes_put_invalid_hour_rejected_without_persist(client):
@@ -1053,6 +1061,21 @@ def test_api_ajustes_put_blank_template_rejected(client):
             "hora_invitados": "17:15",
             "plantilla_confirmacion": "",
             "plantilla_invitados": "inv",
+            "etiqueta_confirmada": "Reserva confirmada",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_api_ajustes_put_blank_label_rejected(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "09:00",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "conf",
+            "plantilla_invitados": "inv",
+            "etiqueta_confirmada": "",
         },
     )
     assert response.status_code == 422

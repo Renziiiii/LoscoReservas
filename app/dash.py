@@ -224,13 +224,15 @@ def _chatwoot_configurado(settings: Settings) -> bool:
     )
 
 
-# --- ajustes JSON API (S8: automated-message settings inside the SPA) ---
+# --- ajustes JSON API (S8: settings popup inside the SPA) ---
 
 AJUSTES_MENSAJES = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+AJUSTES_ETIQUETA = ("etiqueta_confirmada",)
+AJUSTES_CAMPOS = AJUSTES_MENSAJES + AJUSTES_ETIQUETA
 
 
 def _ajustes_payload(config) -> dict:
-    return {campo: getattr(config, campo) for campo in AJUSTES_MENSAJES}
+    return {campo: getattr(config, campo) for campo in AJUSTES_CAMPOS}
 
 
 @api_router.get("")
@@ -247,21 +249,21 @@ def ajustes_json_put(
 ):
     settings = request.app.state.settings
     values = {campo: (payload.get(campo) or "").strip() if isinstance(payload.get(campo), str) else ""
-              for campo in AJUSTES_MENSAJES}
+              for campo in AJUSTES_CAMPOS}
     errors: dict[str, str] = {}
     for campo in ("hora_confirmacion", "hora_invitados"):
         try:
             parse_hora(values[campo])
         except ValueError:
             errors[campo] = "Hora mal formada: usá HH:MM (ej. 09:00)."
-    for campo in ("plantilla_confirmacion", "plantilla_invitados"):
+    for campo in ("plantilla_confirmacion", "plantilla_invitados", "etiqueta_confirmada"):
         if not values[campo]:
-            errors[campo] = "El nombre de la plantilla es obligatorio."
+            errors[campo] = "Es obligatorio."
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
     config = obtener_configuracion(session, settings)
-    for campo in AJUSTES_MENSAJES:
+    for campo in AJUSTES_CAMPOS:
         setattr(config, campo, values[campo])
     session.commit()
 
