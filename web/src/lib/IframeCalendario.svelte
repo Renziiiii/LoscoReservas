@@ -371,7 +371,10 @@
 {/if}
 
 {#if draft}
-  <div class="mx-2 mt-2 rounded-lg border border-zinc-200 p-3 shadow-sm bg-white">
+  <!-- L15: sin padding ni márgenes — flush contra el borde del iframe
+  (mismo criterio que el calendario, L65); los inputs llevan su propio
+  padding interno. -->
+  <div class="border-y border-zinc-200 bg-white">
     <div class="flex items-baseline justify-between gap-2">
       <h3 class="text-sm font-semibold">
         {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
