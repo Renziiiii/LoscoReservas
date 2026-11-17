@@ -28,7 +28,6 @@
   let contactoNombre = $state("");
   let telefono = $state("");
   let estadoFuente = $state("esperando contexto de Chatwoot…");
-  let avisos = $state<string[]>([]);
   let seleccionada = $state<Reserva | null>(null);
   /** Borrador editable del panel: sólo viaja al backend al guardar. */
   let draft = $state({
@@ -66,10 +65,6 @@
   let reservas = $state<Reserva[]>([]);
   let cal = $state<Calendar>();
   let pollTimer: ReturnType<typeof setInterval> | undefined;
-
-  function avisar(msg: string) {
-    avisos = [msg, ...avisos].slice(0, 5);
-  }
 
   function fechaISO(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -115,17 +110,14 @@
         personas: 2,
       }),
     });
-    avisar(res.status === 201 ? `reserva creada ${fecha} ${hora}` : `error al crear (${res.status})`);
     await cargar();
   }
-
   async function reprogramar(id: number, fecha: string, hora: string) {
     const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fecha, hora }),
     });
-    avisar(res.ok ? `reserva #${id} → ${fecha} ${hora}` : `error al guardar #${id} (${res.status})`);
     await cargar();
     // Si la reserva editada está abierta en el panel, refrescala con lo nuevo.
     if (seleccionada?.id === id && res.ok) {
@@ -157,20 +149,10 @@
         }),
       });
       if (res.ok) {
-        avisar(`reserva #${id} guardada`);
         cerrar();
         await cargar();
-      } else if (res.status === 422) {
-        const cuerpo = await res.json().catch(() => null);
-        const msjs = (cuerpo?.detail ?? [])
-          .map((e: { msg?: string }) => e.msg ?? "")
-          .filter(Boolean);
-        avisar(msjs.length ? `datos inválidos: ${msjs.join(" · ")}` : "datos inválidos (422)");
-      } else {
-        avisar(`error al guardar #${id} (${res.status})`);
       }
     } catch {
-      avisar("sin conexión con la API");
     } finally {
       guardando = false;
     }
@@ -185,14 +167,10 @@
     try {
       const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, { method: "DELETE" });
       if (res.status === 204) {
-        avisar(`reserva #${id} eliminada`);
         cerrar();
         await cargar();
-      } else {
-        avisar(`error al eliminar #${id} (${res.status})`);
       }
     } catch {
-      avisar("sin conexión con la API");
     } finally {
       guardando = false;
     }
@@ -293,14 +271,6 @@
   <span class="text-xs text-zinc-500 truncate">{contactoNombre || telefono || "sin contacto"}</span>
   <span class="ml-auto text-[10px] rounded-full px-2 py-0.5 bg-blue-50 text-blue-700 whitespace-nowrap">{estadoFuente}</span>
 </header>
-
-{#if avisos.length}
-  <div class="px-3 py-1 text-xs text-zinc-600 bg-zinc-50 border-b border-zinc-100">
-    {#each avisos as a}
-      <div>{a}</div>
-    {/each}
-  </div>
-{/if}
 
 {#if seleccionada && draft}
   <div class="mx-2 mt-2 rounded-lg border border-zinc-200 p-3 shadow-sm bg-white">
