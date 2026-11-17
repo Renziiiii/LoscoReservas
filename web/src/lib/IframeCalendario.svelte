@@ -173,6 +173,9 @@
     try {
       const cuerpo = JSON.stringify({
         nombre: draft.nombre,
+        // El POST exige telefono (ReservaCreate); en crear viene del
+        // contacto de Chatwoot que abrió el panel y no está en el draft.
+        ...(modo === "crear" ? { telefono } : {}),
         fecha: draft.fecha,
         hora: draft.hora,
         personas: draft.personas,
@@ -195,7 +198,11 @@
       } else {
         const data = await res.json().catch(() => null);
         const msjs = (data?.detail ?? [])
-          .map((e: { msg?: string }) => e.msg ?? "")
+          .map((e: { loc?: (string | number)[]; msg?: string }) => {
+            // "body.telefono" + "Field required" → "telefono: Field required"
+            const campo = e.loc?.filter((p) => p !== "body").join(".") ?? "";
+            return campo ? `${campo}: ${e.msg ?? ""}` : (e.msg ?? "");
+          })
           .filter(Boolean);
         avisar(msjs.length ? msjs.join(" · ") : `error al guardar (${res.status})`, "err");
       }
