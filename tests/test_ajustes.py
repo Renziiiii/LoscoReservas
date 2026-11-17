@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.etiquetas import migrar_etiqueta
 from app.main import create_app
-from app.models import Base, Configuracion, Reserva
+from app.models import Base, Configuracion, EstadoReserva as Estado, Reserva
 from app.scheduler import build_scheduler, reprogramar
 
 TEST_USERS = "valen:testpass123"
@@ -100,6 +100,8 @@ def test_post_ajustes_persists_values(client):
 
     follow = client.get("/ajustes")
     for expected in FORM_DATA.values():
+        if expected == FORM_DATA["etiqueta_confirmada"]:
+            continue  # T4: la etiqueta ya no vive en /ajustes
         assert expected in follow.text
 
     with client.app.state.sessionmaker() as session:
@@ -478,37 +480,26 @@ def test_chatwoot_client_envia_ambos_headers_de_auth():
 
 # --- T15 (parte A): etiqueta de reserva confirmada configurable (L24) ---
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 
-def test_ajustes_page_contiene_selector_de_etiqueta(client):
+def test_etiqueta_ya_no_vive_en_ajustes(client):
+    """T4 (tags-estados-sync): the confirmed label left /ajustes — it is
+    now the Tags page (estado `confirmada` -> etiqueta_chatwoot)."""
     response = client.get("/ajustes")
     assert response.status_code == 200
-    for marker in ('id="sel-etiqueta-confirmada"', 'name="etiqueta_confirmada"'):
-        assert marker in response.text, marker
+    assert 'name="etiqueta_confirmada"' not in response.text
 
 
-def test_ajustes_muestra_etiqueta_por_defecto(client):
-    response = client.get("/ajustes")
-    assert "Reserva confirmada" in response.text
-
-
-def test_post_ajustes_guarda_etiqueta(client):
-    data = dict(FORM_DATA, etiqueta_confirmada="Mesa ya confirmada")
+def test_post_ajustes_ignora_el_campo_etiqueta_legacy(client):
+    """Old callers (bookmarks/scripts) keep saving messaging settings; the
+    removed field is silently ignored."""
+    data = dict(FORM_DATA, etiqueta_confirmada="No persistir")
     response = client.post("/ajustes", data=data, follow_redirects=False)
     assert response.status_code == 303
     with client.app.state.sessionmaker() as session:
         config = session.get(Configuracion, 1)
-        assert config.etiqueta_confirmada == "Mesa ya confirmada"
-
-
-def test_post_ajustes_etiqueta_vacia_rechazada(client):
-    client.get("/ajustes")
-    data = dict(FORM_DATA, etiqueta_confirmada="")
-    response = client.post("/ajustes", data=data)
-    assert response.status_code == 200
-    with client.app.state.sessionmaker() as session:
-        config = session.get(Configuracion, 1)
+        assert config.plantilla_confirmacion == "conf_losco"
         assert config.etiqueta_confirmada == "Reserva confirmada"
 
 
@@ -538,7 +529,7 @@ def test_columna_etiqueta_migrada_en_db_con_esquema_viejo(tmp_path):
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
         _cookie_login(client)
-        response = client.get("/ajustes")
+        response = client.get("/ajustes/tags")
         assert response.status_code == 200
         assert "Reserva confirmada" in response.text  # default after migration
 
@@ -906,8 +897,9 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
     with TestClient(app) as client:
         _cookie_login(client)
         response = client.post(
-            "/ajustes",
-            data=dict(FORM_DATA, etiqueta_confirmada="Confirmada nueva"),
+            "/ajustes/tags/confirmada",
+            data={"nombre": "Confirmada", "etiqueta_chatwoot": "Confirmada nueva",
+                  "envia_recordatorio": "on"},
             follow_redirects=False,
         )
         assert response.status_code == 200
@@ -919,8 +911,10 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
         assert "migrar-etiqueta" in text
 
         with client.app.state.sessionmaker() as session:
-            config = session.get(Configuracion, 1)
-            assert config.etiqueta_confirmada == "Confirmada nueva"
+            estado = session.scalars(
+                select(Estado).where(Estado.slug == "confirmada")
+            ).one()
+            assert estado.etiqueta_chatwoot == "Confirmada nueva"
 
 
 def test_post_ajustes_cambio_etiqueta_cero_contactos_redirige(tmp_path, monkeypatch):
@@ -936,22 +930,24 @@ def test_post_ajustes_cambio_etiqueta_cero_contactos_redirige(tmp_path, monkeypa
     with TestClient(app) as client:
         _cookie_login(client)
         response = client.post(
-            "/ajustes",
-            data=dict(FORM_DATA, etiqueta_confirmada="Otra etiqueta"),
+            "/ajustes/tags/confirmada",
+            data={"nombre": "Confirmada", "etiqueta_chatwoot": "Otra etiqueta",
+                  "envia_recordatorio": "on"},
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes"
+        assert response.headers["location"].startswith("/ajustes/tags")
 
 
-def test_post_ajustes_cambio_etiqueta_chatwoot_no_configurado_redirige(client):
+def test_post_tags_cambio_etiqueta_chatwoot_no_configurado_redirige(client):
     response = client.post(
-        "/ajustes",
-        data=dict(FORM_DATA, etiqueta_confirmada="Etiqueta X"),
+        "/ajustes/tags/confirmada",
+        data={"nombre": "Confirmada", "etiqueta_chatwoot": "Etiqueta X",
+              "envia_recordatorio": "on"},
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/ajustes"
+    assert response.headers["location"].startswith("/ajustes/tags")
 
 
 def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
@@ -977,18 +973,18 @@ def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes?migrados_contactos=2&migrados_conv=3&fallas=0"
+        assert response.headers["location"] == "/ajustes/tags?migrados_contactos=2&migrados_conv=3&fallas=0"
         assert calls == [("Reserva confirmada", "Confirmada nueva")]
 
 
-def test_get_ajustes_muestra_banner_de_migracion(client):
-    response = client.get("/ajustes?migrados_contactos=2&migrados_conv=3&fallas=0")
+def test_get_ajustes_tags_muestra_banner_de_migracion(client):
+    response = client.get("/ajustes/tags?migrados_contactos=2&migrados_conv=3&fallas=0")
     assert response.status_code == 200
     assert "Migración lista: 2 contactos y 3 conversaciones actualizados" in response.text
 
 
-def test_get_ajustes_muestra_fallas_en_banner(client):
-    response = client.get("/ajustes?migrados_contactos=2&migrados_conv=3&fallas=1")
+def test_get_ajustes_tags_muestra_fallas_en_banner(client):
+    response = client.get("/ajustes/tags?migrados_contactos=2&migrados_conv=3&fallas=1")
     assert response.status_code == 200
     assert "Migración lista: 2 contactos y 3 conversaciones actualizados" in response.text
     assert "1 fallas" in response.text
@@ -1004,7 +1000,7 @@ def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeyp
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes"
+        assert response.headers["location"].startswith("/ajustes/tags")
 
         response = client.post(
             "/ajustes/migrar-etiqueta",
@@ -1012,7 +1008,7 @@ def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeyp
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes"
+        assert response.headers["location"].startswith("/ajustes/tags")
 
 
 # --- L26: guardar ajustes con el scheduler ACTIVO no debe crashear ---
@@ -1041,15 +1037,14 @@ def test_api_ajustes_requires_auth(anon_client):
 
 
 def test_api_ajustes_get_returns_messaging_config(client):
+    """T4: the label mapping left the messaging config (Tags page owns it)."""
     body = client.get("/api/ajustes").json()
     assert set(body) == {
         "hora_confirmacion",
         "hora_invitados",
         "plantilla_confirmacion",
         "plantilla_invitados",
-        "etiqueta_confirmada",
     }
-    assert body["etiqueta_confirmada"]
 
 
 def test_api_ajustes_put_saves_and_returns_updated(client):
@@ -1067,7 +1062,7 @@ def test_api_ajustes_put_saves_and_returns_updated(client):
     assert response.json()["hora_confirmacion"] == "08:30"
     body = client.get("/api/ajustes").json()
     assert body["plantilla_invitados"] == "inv_new"
-    assert body["etiqueta_confirmada"] == "Reserva OK"
+    assert "etiqueta_confirmada" not in body
 
 
 def test_api_ajustes_put_invalid_hour_rejected_without_persist(client):
@@ -1098,7 +1093,9 @@ def test_api_ajustes_put_blank_template_rejected(client):
     assert response.status_code == 422
 
 
-def test_api_ajustes_put_blank_label_rejected(client):
+def test_api_ajustes_put_ignora_etiqueta_vacia(client):
+    """T4: la etiqueta ya no es parte de la config de mensajería — el PUT
+    la ignora y guarda el resto."""
     response = client.put(
         "/api/ajustes",
         json={
@@ -1109,4 +1106,6 @@ def test_api_ajustes_put_blank_label_rejected(client):
             "etiqueta_confirmada": "",
         },
     )
-    assert response.status_code == 422
+    assert response.status_code == 200
+    body = client.get("/api/ajustes").json()
+    assert body["plantilla_confirmacion"] == "conf"

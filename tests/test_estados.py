@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import EstadoReserva
+from app.models import Configuracion, EstadoReserva
 from tests.conftest import _make_settings
 
 VALID = dict(nombre="A", telefono="+5493512602003", fecha="2026-03-21",
@@ -126,3 +126,137 @@ def test_mensajeria_respeta_envia_recordatorio(app_ytablas):
     with app.state.sessionmaker() as session:
         elegidas = reservas_para_confirmar(session, date(2026, 3, 21))
     assert [r.nombre for r in elegidas] == ["SíEnvía"]
+
+
+# --- T4: CRUD de estados + sección Tags en Ajustes ---
+
+def test_crud_crear_estado(client):
+    resp = client.post("/api/estados", json={"nombre": "Esperando"})
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["slug"] == "esperando"
+    assert body["envia_recordatorio"] is True
+    assert body["es_base"] is False
+    assert body["etiqueta_chatwoot"] is None
+
+
+def test_crud_crear_con_etiqueta_y_envio_false(client):
+    resp = client.post(
+        "/api/estados",
+        json={"nombre": "Lista de espera", "etiqueta_chatwoot": "lista-espera",
+              "envia_recordatorio": False},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["etiqueta_chatwoot"] == "lista-espera"
+    assert body["envia_recordatorio"] is False
+
+
+def test_crud_crear_rejecta_vacio_y_largo(client):
+    assert client.post("/api/estados", json={"nombre": "   "}).status_code == 422
+    assert client.post("/api/estados", json={"nombre": "x" * 61}).status_code == 422
+
+
+def test_crud_crear_duplicado_mismo_slug(client):
+    assert client.post("/api/estados", json={"nombre": "CanceladA"}).status_code == 409
+
+
+def test_crud_editar_estado_mapeo(client):
+    resp = client.patch(
+        "/api/estados/cancelada",
+        json={"etiqueta_chatwoot": "reserva-cancelada", "envia_recordatorio": True},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["etiqueta_chatwoot"] == "reserva-cancelada"
+    assert body["envia_recordatorio"] is True
+
+
+def test_crud_editar_no_permite_cambiar_slug(client):
+    resp = client.patch("/api/estados/cancelada", json={"slug": "otra-cosa"})
+    assert resp.status_code == 422
+
+
+def test_crud_eliminar_estado_no_base(client):
+    client.post("/api/estados", json={"nombre": "Temporal"})
+    resp = client.delete("/api/estados/temporal")
+    assert resp.status_code in (200, 204)
+    slugs = {r["slug"] for r in client.get("/api/estados").json()}
+    assert "temporal" not in slugs
+
+
+def test_crud_eliminar_base_rechazada(client):
+    resp = client.delete("/api/estados/confirmada")
+    assert resp.status_code == 409
+    assert "base" in resp.text
+
+
+def test_crud_eliminar_con_reservas_rechazado(client):
+    client.post("/api/estados", json={"nombre": "Temporal"})
+    created = client.post("/api/reservas", json={
+        "nombre": "Juan", "telefono": "+5493512602003",
+        "fecha": "2026-03-21", "hora": "20:00", "personas": 2, "estado": "temporal",
+    })
+    assert created.status_code == 201
+    resp = client.delete("/api/estados/temporal")
+    assert resp.status_code == 409
+    assert "reserva" in resp.text.lower()
+
+
+def test_crud_requiere_auth(anon_client):
+    assert anon_client.post("/api/estados", json={"nombre": "X"}).status_code in (401, 403)
+    assert anon_client.delete("/api/estados/pendiente").status_code in (401, 403)
+
+
+# --- T4: sección Tags en el dashboard ---
+
+def _login_page(test_client):
+    response = test_client.post(
+        "/login",
+        data={"username": "valen", "password": TEST_USERS_PASSWORD.split(":")[1]},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
+TEST_USERS_PASSWORD = "valen:testpass123"
+
+
+def test_ajustes_tags_page_lista_estados(tmp_path):
+    settings = Settings(
+        database_path=tmp_path / "reservas.db",
+        users=TEST_USERS_PASSWORD,
+        jwt_secret="test-secret-0123456789abcdef0123456789abcdef",
+        _env_file=None,
+    )
+    with TestClient(create_app(settings)) as test_client:
+        _login_page(test_client)
+        resp = test_client.get("/ajustes/tags")
+    assert resp.status_code == 200
+    for marker in ("Pendiente", "Confirmada", "Cancelada", "reserva"):
+        assert marker in resp.text, marker
+
+
+def test_etiqueta_confirmada_fuera_de_ajustes(client):
+    """S-switch: the confirmed-label section leaves /ajustes (it now lives
+    in the Tags page as `confirmada`.etiqueta_chatwoot)."""
+    resp = client.get("/ajustes")
+    assert 'name="etiqueta_confirmada"' not in resp.text
+
+
+def test_post_ajustes_ignora_campo_etiqueta_viejo(client):
+    """Legacy POSTs keep working: the removed field is ignored, the rest
+    of the settings still persist."""
+    app = client.app
+    data = {
+        "hora_confirmacion": "10:30", "hora_invitados": "18:45",
+        "plantilla_confirmacion": "conf_losco",
+        "plantilla_invitados": "invitados_losco",
+        "etiqueta_confirmada": "No debería persistir",
+    }
+    resp = client.post("/ajustes", data=data, follow_redirects=False)
+    assert resp.status_code == 303
+    with app.state.sessionmaker() as session:
+        config = session.get(Configuracion, 1)
+        assert config.plantilla_confirmacion == "conf_losco"
+        assert config.etiqueta_confirmada == "Reserva confirmada"

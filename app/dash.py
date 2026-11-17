@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -252,9 +252,10 @@ def _chatwoot_configurado(settings: Settings) -> bool:
 
 # --- ajustes JSON API (S8: settings popup inside the SPA) ---
 
-AJUSTES_MENSAJES = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
-AJUSTES_ETIQUETA = ("etiqueta_confirmada",)
-AJUSTES_CAMPOS = AJUSTES_MENSAJES + AJUSTES_ETIQUETA
+# T4 (tags-estados-sync): `etiqueta_confirmada` salió de la config de
+# mensajería — el mapeo estado↔etiqueta vive en `estados_reserva` y se
+# edita en la página Tags (/ajustes/tags).
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
 
 
 def _ajustes_payload(config) -> dict:
@@ -282,7 +283,7 @@ def ajustes_json_put(
             parse_hora(values[campo])
         except ValueError:
             errors[campo] = "Hora mal formada: usá HH:MM (ej. 09:00)."
-    for campo in ("plantilla_confirmacion", "plantilla_invitados", "etiqueta_confirmada"):
+    for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "Es obligatorio."
     if errors:
@@ -306,16 +307,16 @@ def ajustes_submit(
     hora_invitados: str | None = Form(None),
     plantilla_confirmacion: str | None = Form(None),
     plantilla_invitados: str | None = Form(None),
-    etiqueta_confirmada: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
+    """T4: solo mensajería. Un POST legacy que aún envíe
+    `etiqueta_confirmada` lo ignora sin fallar (el campo salió del panel)."""
     settings = request.app.state.settings
     values = {
         "hora_confirmacion": (hora_confirmacion or "").strip(),
         "hora_invitados": (hora_invitados or "").strip(),
         "plantilla_confirmacion": (plantilla_confirmacion or "").strip(),
         "plantilla_invitados": (plantilla_invitados or "").strip(),
-        "etiqueta_confirmada": (etiqueta_confirmada or "").strip(),
     }
     errors: dict[str, str] = {}
     for campo in ("hora_confirmacion", "hora_invitados"):
@@ -326,27 +327,107 @@ def ajustes_submit(
     for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "El nombre de la plantilla es obligatorio."
-    if not values["etiqueta_confirmada"]:
-        errors["etiqueta_confirmada"] = "El nombre de la etiqueta es obligatorio."
     if errors:
         config = obtener_configuracion(session, settings)
         return _render_ajustes(request, config, errors=errors, values=values)
 
     config = obtener_configuracion(session, settings)
-    vieja = config.etiqueta_confirmada
     config.hora_confirmacion = values["hora_confirmacion"]
     config.hora_invitados = values["hora_invitados"]
     config.plantilla_confirmacion = values["plantilla_confirmacion"]
     config.plantilla_invitados = values["plantilla_invitados"]
-    config.etiqueta_confirmada = values["etiqueta_confirmada"]
     session.commit()
 
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler is not None:
         reprogramar(scheduler, request.app, settings)
 
-    nueva = values["etiqueta_confirmada"]
-    if _chatwoot_configurado(settings) and vieja != nueva:
+    return RedirectResponse("/ajustes", status_code=303)
+
+
+# --- sección Tags / estados (T4, tags-estados-sync) ---
+
+def _redirect_tags(**params) -> RedirectResponse:
+    query = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
+    return RedirectResponse(f"/ajustes/tags{('?' + query) if query else ''}", status_code=303)
+
+
+@router.get("/ajustes/tags")
+def ajustes_tags_page(
+    request: Request,
+    migrados_contactos: int | None = None,
+    migrados_conv: int | None = None,
+    fallas: int | None = None,
+    error: str | None = None,
+    session: Session = Depends(get_session),
+):
+    """Sección Tags: estados de reserva configurables y su etiqueta de
+    Chatwoot (S1-S4, tags-estados-sync). El estado guarda el mapeo; al
+    cambiarlo se ofrece migrar la etiqueta vieja (L27)."""
+    estados = list(session.scalars(select(EstadoReserva).order_by(EstadoReserva.id)))
+    return templates.TemplateResponse(
+        request,
+        "ajustes_tags.html",
+        {
+            "estados": estados,
+            "migrados_contactos": migrados_contactos,
+            "migrados_conv": migrados_conv,
+            "fallas": fallas,
+            "error": error,
+        },
+    )
+
+
+@router.post("/ajustes/tags")
+def ajustes_tags_crear(
+    request: Request,
+    nombre: str | None = Form(None),
+    etiqueta_chatwoot: str | None = Form(None),
+    envia_recordatorio: str | None = Form(None),
+    session: Session = Depends(get_session),
+):
+    nombre = (nombre or "").strip()
+    if not nombre or len(nombre) > 60:
+        return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
+    slug = _slug_de(nombre)
+    if session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug)):
+        return _redirect_tags(error=f"Ya existe el estado '{slug}'.")
+    session.add(EstadoReserva(
+        nombre=nombre, slug=slug,
+        etiqueta_chatwoot=(etiqueta_chatwoot or "").strip() or None,
+        envia_recordatorio=envia_recordatorio is not None,
+    ))
+    session.commit()
+    return _redirect_tags()
+
+
+@router.post("/ajustes/tags/{slug}")
+def ajustes_tags_editar(
+    request: Request,
+    slug: str,
+    nombre: str | None = Form(None),
+    etiqueta_chatwoot: str | None = Form(None),
+    envia_recordatorio: str | None = Form(None),
+    session: Session = Depends(get_session),
+):
+    """Edición de un estado. Al cambiar la etiqueta de Chatwoot se consulta
+    la cuenta: si la etiqueta vieja está en uso se ofrece la migración
+    (mismo flujo que tenía /ajustes para etiqueta_confirmada)."""
+    estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
+    if estado is None:
+        return _redirect_tags(error="Estado no encontrado.")
+    nombre = (nombre or "").strip()
+    if not nombre or len(nombre) > 60:
+        return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
+    settings = request.app.state.settings
+    vieja = estado.etiqueta_chatwoot
+    nueva = (etiqueta_chatwoot or "").strip() or None
+    estado.nombre = nombre
+    estado.etiqueta_chatwoot = nueva
+    estado.envia_recordatorio = envia_recordatorio is not None
+    session.commit()
+
+    if _chatwoot_configurado(settings) and vieja and nueva and vieja != nueva:
         try:
             chatwoot = ChatwootClient(
                 settings.chatwoot_base_url,
@@ -356,7 +437,7 @@ def ajustes_submit(
             total_contactos = len(chatwoot.contactos_con_etiqueta(vieja))
             total_conversaciones = len(chatwoot.conversaciones_con_etiqueta(vieja))
         except Exception:
-            return RedirectResponse("/ajustes", status_code=303)
+            return _redirect_tags()
         if total_contactos + total_conversaciones > 0:
             return templates.TemplateResponse(
                 request,
@@ -368,8 +449,35 @@ def ajustes_submit(
                     "total_conversaciones": total_conversaciones,
                 },
             )
+    return _redirect_tags()
 
-    return RedirectResponse("/ajustes", status_code=303)
+
+@router.post("/ajustes/tags/{slug}/eliminar")
+def ajustes_tags_eliminar(
+    request: Request, slug: str, session: Session = Depends(get_session)
+):
+    estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
+    if estado is None:
+        return _redirect_tags(error="Estado no encontrado.")
+    if estado.es_base:
+        return _redirect_tags(error="Los tres estados base no se pueden eliminar.")
+    en_uso = session.scalar(
+        select(func.count()).select_from(Reserva).where(Reserva.estado == slug)
+    )
+    if en_uso:
+        return _redirect_tags(
+            error=f"El estado '{slug}' lo usan {en_uso} reserva(s): reasignalas antes de eliminarlo."
+        )
+    session.delete(estado)
+    session.commit()
+    return _redirect_tags()
+
+
+def _slug_de(nombre: str) -> str:
+    """Display name -> stored slug (solo el dashboard lo llama al crear)."""
+    import re as _re
+
+    return _re.sub(r"\s+", "-", (nombre or "").strip().lower()) or "estado"
 
 
 @router.post("/ajustes/migrar-etiqueta")
@@ -381,11 +489,11 @@ def migrar_etiqueta_submit(
     vieja = (vieja or "").strip()
     nueva = (nueva or "").strip()
     if not vieja or not nueva or vieja == nueva:
-        return RedirectResponse("/ajustes", status_code=303)
+        return RedirectResponse("/ajustes/tags", status_code=303)
 
     resultado = migrar_etiqueta(request.app.state.settings, vieja, nueva)
     return RedirectResponse(
-        f"/ajustes?migrados_contactos={len(resultado['migrados_contactos'])}"
+        f"/ajustes/tags?migrados_contactos={len(resultado['migrados_contactos'])}"
         f"&migrados_conv={len(resultado['migrados_conversaciones'])}"
         f"&fallas={len(resultado['fallas'])}",
         status_code=303,

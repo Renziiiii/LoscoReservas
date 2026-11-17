@@ -9,6 +9,7 @@
       <!-- Hoy hay una sola sección; cuando haya más panels, agregar acá
            los links correspondientes (la sección activa usa .active). -->
       <a class="sidebar-item active" href="/ajustes" aria-current="page">Mensajes automatizados</a>
+      <a class="sidebar-item" href="/ajustes/tags">Tags</a>
     </nav>
   </aside>
   <div class="panel-content">
@@ -26,15 +27,6 @@ elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.<
 {% endif %}
 
 <form method="post" action="/ajustes" class="card">
-  <h2>Etiqueta de reserva confirmada</h2>
-  <label>Etiqueta de Chatwoot
-    <select id="sel-etiqueta-confirmada" style="display:none"></select>
-    <input type="text" name="etiqueta_confirmada" id="in-etiqueta-confirmada" required maxlength="120"
-      value="{{ values.etiqueta_confirmada if values.etiqueta_confirmada is defined else config.etiqueta_confirmada }}">
-    {% if errors.etiqueta_confirmada %}<span class="error">{{ errors.etiqueta_confirmada }}</span>{% endif %}
-  </label>
-  <p id="etiquetas-estado" class="muted">Cargando etiquetas de Chatwoot…</p>
-
   <h2>Confirmación de reserva (T-48h)</h2>
   <label>Hora de envío
     <input type="time" name="hora_confirmacion" required
@@ -123,24 +115,6 @@ elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.<
           'No se pudieron cargar las plantillas: escribí el nombre a mano.';
       });
 
-    fetch('/ajustes/etiquetas.json')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var estado = document.getElementById('etiquetas-estado');
-        if (data.motivo) {
-          estado.textContent = data.motivo;
-        } else {
-          estado.textContent = data.etiquetas.length + ' etiquetas cargadas desde Chatwoot.';
-          activarSelector('sel-etiqueta-confirmada', 'in-etiqueta-confirmada', data.etiquetas, {
-            valor: function (e) { return e.title; },
-            etiqueta: function (e) { return e.title + (e.color ? ' (' + e.color + ')' : ''); }
-          });
-        }
-      })
-      .catch(function () {
-        document.getElementById('etiquetas-estado').textContent =
-          'No se pudieron cargar las etiquetas: escribí el nombre a mano.';
-      });
   </script>
 
   <button class="btn primary" type="submit">Guardar ajustes</button>
