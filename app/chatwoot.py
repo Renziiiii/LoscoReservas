@@ -123,6 +123,11 @@ class ChatwootClient:
         response.raise_for_status()
         return response.json().get("payload") or {}
 
+    def obtener_conversacion(self, conversacion_id: int) -> dict | None:
+        """One conversation by id; None when missing."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/conversations/{conversacion_id}")
+        return data if isinstance(data, dict) and data.get("id") else None
+
     def conversaciones(self, contacto_id: int) -> list[dict]:
         data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/conversations")
         return data.get("payload") or []

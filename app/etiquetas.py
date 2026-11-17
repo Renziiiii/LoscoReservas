@@ -285,3 +285,44 @@ def migrar_etiqueta(
         "migrados_conversaciones": migrados_conversaciones,
         "fallas": fallas,
     }
+
+def sincronizar_contacto_todas_las_conversaciones(
+    settings: Settings, contacto_id: int, transport=None
+) -> bool:
+    """Propagate a contact's CURRENT labels to every conversation the
+    contact already has (T3 / contact_updated webhook): work like S5's
+    per-conversation merge reads each conversation's labels and adds what
+    is missing. Never removes (the webhook fires after ANY contact edit).
+
+    Returns True when at least one conversation was updated; False on
+    failure or when nothing was missing. Fail-soft: never raises."""
+    if not _configurado(settings):
+        return False
+    try:
+        chatwoot = ChatwootClient(
+            settings.chatwoot_base_url,
+            settings.chatwoot_api_token,
+            settings.chatwoot_account_id,
+            transport=transport,
+        )
+        etiquetas_contacto = chatwoot.listar_labels_contacto(contacto_id)
+        conversaciones = chatwoot.conversaciones(contacto_id)
+    except Exception as exc:
+        logger.warning("propagar etiquetas del contacto %s falló: %s", contacto_id, exc)
+        return False
+    if not etiquetas_contacto or not conversaciones:
+        return False
+    ok = False
+    for conv in conversaciones:
+        conv_id = conv.get("id")
+        if conv_id is None:
+            continue
+        try:
+            actuales = chatwoot.listar_labels_conversacion(conv_id)
+            faltantes = [l for l in etiquetas_contacto if l not in actuales]
+            if faltantes:
+                chatwoot.agregar_labels_conversacion(conv_id, actuales + faltantes)
+                ok = True
+        except Exception as exc:
+            logger.warning("propagar etiquetas a la conversación %s falló: %s", conv_id, exc)
+    return ok
