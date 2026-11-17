@@ -76,8 +76,10 @@ uvicorn app.main:app --reload     # http://localhost:8000/docs
 
 4. Entrá al calendario: `http://<server>:8010/` (usuario de
    `LOSCO_USERS`). La ruta raíz sirve el SPA de FullCalendar (vistas
-   Año/Mes/Semana/Día); las páginas Jinja (`/nuevo`, `/ajustes`) siguen
-   disponibles desde el panel.
+   Año/Mes/Semana/Día/Lista): editá o creá reservas desde el panel,
+   saltá al chat de Chatwoot de cada reserva y configurá los mensajes
+   automatizados desde "Mensajes automatizados". Las páginas Jinja
+   (`/nuevo`, `/ajustes`) siguen disponibles.
 
 > Nota: el iframe embebido en Chatwoot requiere que la app sea alcanzable
 > por HTTPS desde el navegador del agente (Chatwoot Dashboard Apps carga

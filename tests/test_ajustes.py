@@ -999,3 +999,60 @@ def test_post_ajustes_con_scheduler_activo_reprograma_sin_error(tmp_path):
         jobs = {job.id: job for job in app.state.scheduler.get_jobs()}
         assert str(jobs["confirmaciones_t48h"].trigger) == "cron[hour='10', minute='30']"
         assert str(jobs["recordatorio_invitados"].trigger) == "cron[hour='18', minute='45']"
+
+
+# --- S8 (calendario en raíz): settings de mensajes automatizados en el SPA ---
+
+
+def test_api_ajustes_requires_auth(anon_client):
+    assert anon_client.get("/api/ajustes").status_code == 401
+    assert anon_client.put("/api/ajustes", json={}).status_code == 401
+
+
+def test_api_ajustes_get_returns_messaging_config(client):
+    body = client.get("/api/ajustes").json()
+    assert set(body) == {"hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados"}
+    assert body["hora_confirmacion"]
+
+
+def test_api_ajustes_put_saves_and_returns_updated(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "08:30",
+            "hora_invitados": "17:45",
+            "plantilla_confirmacion": "conf_new",
+            "plantilla_invitados": "inv_new",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["hora_confirmacion"] == "08:30"
+    body = client.get("/api/ajustes").json()
+    assert body["plantilla_invitados"] == "inv_new"
+
+
+def test_api_ajustes_put_invalid_hour_rejected_without_persist(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "25:99",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "conf",
+            "plantilla_invitados": "inv",
+        },
+    )
+    assert response.status_code == 422
+    assert client.get("/api/ajustes").json()["hora_confirmacion"] != "25:99"
+
+
+def test_api_ajustes_put_blank_template_rejected(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "09:00",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "",
+            "plantilla_invitados": "inv",
+        },
+    )
+    assert response.status_code == 422

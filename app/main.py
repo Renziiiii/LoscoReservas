@@ -13,7 +13,7 @@ from app.ajustes import _asegurar_columna_etiqueta
 from app.config import Settings
 from app.db import Base, make_engine
 from app.auth import router as auth_router, get_current_user
-from app.dash import public_router as dash_public_router, router as dash_router
+from app.dash import api_router as dash_api_router, public_router as dash_public_router, router as dash_router
 from app.iframe import router as iframe_router
 from app.reservas import router as reservas_router
 
@@ -69,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(dash_public_router)
     app.include_router(dash_router)
+    app.include_router(dash_api_router)
     app.include_router(iframe_router)
     app.include_router(reservas_router, dependencies=[Depends(get_current_user)])
 

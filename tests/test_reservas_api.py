@@ -178,3 +178,21 @@ def test_create_rejects_telefono_starting_with_zero(client):
     payload = dict(VALID_PAYLOAD, telefono="011 5555 123456")
     response = client.post("/api/reservas", json=payload)
     assert response.status_code == 422
+
+
+# --- S9 (calendario en raíz): abrir el chat de Chatwoot de una reserva ---
+
+
+def test_reserva_chat_url_requires_auth(anon_client):
+    assert anon_client.get("/api/reservas/1/chat").status_code == 401
+
+
+def test_reserva_chat_url_fail_soft_without_chatwoot(client):
+    """Without Chatwoot credentials the endpoint must not crash: it answers
+    200 with url=None and a motivo the UI can show."""
+    client.post("/api/reservas", json=VALID_PAYLOAD)
+    response = client.get("/api/reservas/1/chat")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["url"] is None
+    assert body["motivo"]

@@ -47,6 +47,9 @@ def _page_user(
 
 public_router = APIRouter(include_in_schema=False)
 router = APIRouter(include_in_schema=False, dependencies=[Depends(_page_user)])
+# JSON API for the calendar SPA (S8): same auth as the API router (401 JSON
+# on miss — no /login redirect, which would confuse a fetch).
+api_router = APIRouter(prefix="/api/ajustes", dependencies=[Depends(_api_current_user)])
 
 
 def _not_found() -> RedirectResponse:
@@ -219,6 +222,53 @@ def _chatwoot_configurado(settings: Settings) -> bool:
         and settings.chatwoot_api_token
         and settings.chatwoot_account_id
     )
+
+
+# --- ajustes JSON API (S8: automated-message settings inside the SPA) ---
+
+AJUSTES_MENSAJES = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+
+
+def _ajustes_payload(config) -> dict:
+    return {campo: getattr(config, campo) for campo in AJUSTES_MENSAJES}
+
+
+@api_router.get("")
+def ajustes_json(request: Request, session: Session = Depends(get_session)):
+    config = obtener_configuracion(session, request.app.state.settings)
+    return _ajustes_payload(config)
+
+
+@api_router.put("")
+def ajustes_json_put(
+    request: Request,
+    payload: dict,
+    session: Session = Depends(get_session),
+):
+    settings = request.app.state.settings
+    values = {campo: (payload.get(campo) or "").strip() if isinstance(payload.get(campo), str) else ""
+              for campo in AJUSTES_MENSAJES}
+    errors: dict[str, str] = {}
+    for campo in ("hora_confirmacion", "hora_invitados"):
+        try:
+            parse_hora(values[campo])
+        except ValueError:
+            errors[campo] = "Hora mal formada: usá HH:MM (ej. 09:00)."
+    for campo in ("plantilla_confirmacion", "plantilla_invitados"):
+        if not values[campo]:
+            errors[campo] = "El nombre de la plantilla es obligatorio."
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+    config = obtener_configuracion(session, settings)
+    for campo in AJUSTES_MENSAJES:
+        setattr(config, campo, values[campo])
+    session.commit()
+
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is not None:
+        reprogramar(scheduler, request, settings)
+    return _ajustes_payload(config)
 
 
 @router.post("/ajustes")

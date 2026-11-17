@@ -8,6 +8,7 @@
   import dayGridPlugin from "fullcalendar/daygrid";
   import timeGridPlugin from "fullcalendar/timegrid";
   import multiMonthPlugin from "fullcalendar/multimonth";
+  import listPlugin from "fullcalendar/list";
   import interactionPlugin from "fullcalendar/interaction";
   import formaThemePlugin from "fullcalendar/themes/forma";
   import esLocale from "fullcalendar/locales/es";
@@ -64,16 +65,16 @@
   );
 
   const options = $derived.by<CalendarOptions>(() => ({
-    plugins: [dayGridPlugin, timeGridPlugin, multiMonthPlugin, interactionPlugin, formaThemePlugin],
+    plugins: [dayGridPlugin, timeGridPlugin, multiMonthPlugin, listPlugin, interactionPlugin, formaThemePlugin],
     locales: [esLocale],
     locale: "es",
     initialView: "dayGridMonth",
     headerToolbar: {
       left: "prev,next today",
       center: "title",
-      right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay",
+      right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listWeek",
     },
-    buttonText: { today: "Hoy", year: "Año", month: "Mes", week: "Semana", day: "Día" },
+    buttonText: { today: "Hoy", year: "Año", month: "Mes", week: "Semana", day: "Día", list: "Lista" },
     height: "auto",
     dayMaxEvents: true,
 
