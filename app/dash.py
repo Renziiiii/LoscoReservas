@@ -197,6 +197,13 @@ def _render_ajustes(
     )
 
 
+@router.get("/settings")
+def settings_redirect():
+    """/settings is the calendar gear's destination (L10): canonical panel
+    stays at /ajustes."""
+    return RedirectResponse("/ajustes", status_code=303)
+
+
 @router.get("/ajustes")
 def ajustes_page(
     request: Request,

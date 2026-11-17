@@ -138,3 +138,10 @@ def test_brand_logo_links_back_home(browser):
     response = browser.get("/nuevo")
     assert response.status_code == 200
     assert '<a class="brand" href="/">Losco</a>' in response.text
+
+
+def test_settings_redirects_to_ajustes(browser):
+    """/settings is the gear's destination: same panel, canonical URL /ajustes."""
+    response = browser.get("/settings", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/ajustes"

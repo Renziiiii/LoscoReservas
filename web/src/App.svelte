@@ -38,78 +38,6 @@
     toastTimer = setTimeout(() => (toast = null), 4000);
   }
 
-  // --- S8 (rework L8): engranaje abajo-izq → popup centrado de configuración ---
-  let ajustesAbierto = $state(false);
-  let ajustes = $state({
-    etiqueta_confirmada: "",
-    hora_confirmacion: "",
-    plantilla_confirmacion: "",
-    hora_invitados: "",
-    plantilla_invitados: "",
-  } | null);
-  let guardandoAjustes = $state(false);
-  let plantillas = $state<{ name: string; variables: string[] }[]>([]);
-  let plantillasMotivo = $state<string | null>(null);
-  let etiquetas = $state<{ title: string }[]>([]);
-  let etiquetasMotivo = $state<string | null>(null);
-
-  async function abrirAjustes() {
-    ajustesAbierto = true;
-    ajustes = null;
-    try {
-      const [resConf, resPla, resEta] = await Promise.all([
-        fetch("/api/ajustes"),
-        fetch("/ajustes/plantillas.json"),
-        fetch("/ajustes/etiquetas.json"),
-      ]);
-      if (resConf.ok) ajustes = await resConf.json();
-      else avisar(`no se pudo cargar la configuración (${resConf.status})`, "err");
-      if (resPla.ok) {
-        const body = await resPla.json();
-        plantillas = body.plantillas ?? [];
-        plantillasMotivo = body.motivo ?? null;
-      }
-      if (resEta.ok) {
-        const body = await resEta.json();
-        etiquetas = body.etiquetas ?? [];
-        etiquetasMotivo = body.motivo ?? null;
-      }
-    } catch {
-      avisar("sin conexión con la API", "err");
-    }
-  }
-
-  function cerrarAjustes() {
-    ajustesAbierto = false;
-  }
-
-  async function guardarAjustes() {
-    if (!ajustes || guardandoAjustes) return;
-    guardandoAjustes = true;
-    try {
-      const res = await fetch("/api/ajustes", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ajustes),
-      });
-      if (res.ok) {
-        avisar("configuración de mensajes guardada");
-      } else {
-        const data = await res.json().catch(() => null);
-        const detail = data?.detail ?? {};
-        const msjs =
-          typeof detail === "object" && !Array.isArray(detail)
-            ? Object.entries(detail).map(([campo, msg]) => `${campo}: ${msg}`)
-            : ["error al guardar la configuración"];
-        avisar(msjs.join(" · "), "err");
-      }
-    } catch {
-      avisar("sin conexión con la API", "err");
-    } finally {
-      guardandoAjustes = false;
-    }
-  }
-
   // --- calendario: carga + escritura ---
 
   let rangoActual = $state<{ inicio: string; fin: string } | null>(null);
@@ -372,92 +300,6 @@
       >{toast.texto}</div>
     {/if}
 
-    {#if ajustesAbierto}
-      <!-- S8 (L8): popup centrado en medio de la pantalla, con overlay -->
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4" role="dialog" aria-modal="true">
-        <div class="w-full max-w-lg rounded-xl border border-zinc-200 bg-white shadow-xl">
-          <div class="flex items-baseline justify-between gap-2 border-b border-zinc-100 px-5 py-3">
-            <h2 class="text-base font-semibold">Configuración</h2>
-            <button
-              type="button"
-              class="text-xs rounded px-2 py-0.5 border border-zinc-300 hover:bg-zinc-50"
-              onclick={cerrarAjustes}
-            >Cerrar</button>
-          </div>
-          {#if ajustes}
-            <form
-              class="max-h-[70vh] overflow-auto px-5 py-4"
-              onsubmit={(e) => { e.preventDefault(); guardarAjustes(); }}
-            >
-              <h3 class="text-sm font-semibold uppercase tracking-wide text-zinc-500">1 · Tags</h3>
-              <label class="mt-2 mb-4 flex flex-col gap-1 text-sm">
-                <span class="text-zinc-500">Tag asignada cuando la reserva queda confirmada</span>
-                <input
-                  class="rounded border border-zinc-300 px-2 py-1"
-                  type="text"
-                  list="etiquetas-chatwoot"
-                  bind:value={ajustes.etiqueta_confirmada}
-                  required
-                />
-              </label>
-              <datalist id="etiquetas-chatwoot">
-                {#each etiquetas as et}
-                  <option value={et.title}></option>
-                {/each}
-              </datalist>
-              {#if etiquetasMotivo}
-                <p class="mb-4 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">{etiquetasMotivo}</p>
-              {:else}
-                <p class="mb-4 text-xs text-zinc-400">Si cambiás la tag, migrá los contactos desde <a class="underline" href="/ajustes">Ajustes</a>.</p>
-              {/if}
-
-              <h3 class="text-sm font-semibold uppercase tracking-wide text-zinc-500">2 · T-48 — Confirmación de la reserva</h3>
-              <p class="mt-1 text-xs text-zinc-400">48 horas antes del turno se envía la confirmación.</p>
-              <div class="mt-2 mb-4 grid grid-cols-2 gap-3 text-sm">
-                <label class="flex flex-col gap-1">
-                  <span class="text-zinc-500">Hora de envío</span>
-                  <input class="rounded border border-zinc-300 px-2 py-1" type="time" bind:value={ajustes.hora_confirmacion} required />
-                </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-zinc-500">Plantilla WhatsApp</span>
-                  <input class="rounded border border-zinc-300 px-2 py-1" type="text" list="plantillas-wa" bind:value={ajustes.plantilla_confirmacion} required />
-                </label>
-              </div>
-
-              <h3 class="text-sm font-semibold uppercase tracking-wide text-zinc-500">3 · T-24 — Confirmación de invitados</h3>
-              <p class="mt-1 text-xs text-zinc-400">El día del turno se confirma la cantidad de invitados.</p>
-              <div class="mt-2 mb-4 grid grid-cols-2 gap-3 text-sm">
-                <label class="flex flex-col gap-1">
-                  <span class="text-zinc-500">Hora de envío</span>
-                  <input class="rounded border border-zinc-300 px-2 py-1" type="time" bind:value={ajustes.hora_invitados} required />
-                </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-zinc-500">Plantilla WhatsApp</span>
-                  <input class="rounded border border-zinc-300 px-2 py-1" type="text" list="plantillas-wa" bind:value={ajustes.plantilla_invitados} required />
-                </label>
-              </div>
-              <datalist id="plantillas-wa">
-                {#each plantillas as p}
-                  <option value={p.name}></option>
-                {/each}
-              </datalist>
-              {#if plantillasMotivo}
-                <p class="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">{plantillasMotivo}</p>
-              {/if}
-
-              <button
-                type="submit"
-                class="mt-4 w-full rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                disabled={guardandoAjustes}
-              >{guardandoAjustes ? "Guardando…" : "Guardar configuración"}</button>
-            </form>
-          {:else}
-            <p class="px-5 py-6 text-sm text-zinc-400 italic">Cargando configuración…</p>
-          {/if}
-        </div>
-      </div>
-    {/if}
-
     {#if draft}
       <div class="rounded-xl border border-zinc-200 p-4 shadow-sm bg-white">
         <div class="flex items-baseline justify-between gap-2">
@@ -545,7 +387,7 @@
           >Abrir chat en Chatwoot</button>
         {/if}
       </div>
-    {:else if !ajustesAbierto}
+    {:else}
       <p class="text-sm text-zinc-400 italic px-1">
         Click en un evento para editarlo · click en un día para crear una reserva.
       </p>
@@ -553,16 +395,15 @@
   </aside>
 </main>
 
-<!-- S8 (L8): icono de engranaje, lado izquierdo abajo -->
-<button
-  type="button"
+<!-- S8 (L10): icono de engranaje, lado izquierdo abajo → /settings -->
+<a
+  href="/settings"
   class="fixed bottom-4 left-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-md hover:bg-zinc-50 active:bg-zinc-100"
   title="Configuración"
   aria-label="Configuración"
-  onclick={abrirAjustes}
 >
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 text-zinc-600">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
-</button>
+</a>
