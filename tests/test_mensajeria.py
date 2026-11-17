@@ -443,3 +443,76 @@ def test_numero_legacy_sin_mas_se_normaliza_a_e164(client):
         if method == "POST" and path.endswith("/contacts")
     ]
     assert posts and posts[0]["phone_number"] == "+5493512602003"
+
+
+# --- T6 (tags-estados-sync): el chat creado/resuelto por la automatización
+# --- recibe las etiquetas del contacto (S6/D2) ---
+
+from app.config import Settings as AppSettings
+from app.main import create_app
+from tests.conftest import _make_settings
+
+
+def _chatwoot_settings(tmp_path) -> AppSettings:
+    return AppSettings(
+        database_path=tmp_path / "reservas.db",
+        users="valen:testpass123",
+        jwt_secret="test-secret-0123456789abcdef0123456789abcdef",
+        chatwoot_base_url="http://chatwoot.test",
+        chatwoot_api_token="token-x",
+        chatwoot_account_id=1,
+        _env_file=None,
+    )
+
+
+def _seed_reserva_confirmacion(session):
+    session.add(Reserva(
+        nombre="Juan Pérez", telefono="+5491111111111",
+        fecha=date(2026, 3, 22), hora=datetime.strptime("21:00", "%H:%M").time(),
+        personas=4,
+    ))
+    session.commit()
+
+
+def test_envio_automatizado_sincroniza_etiquetas_del_contacto(tmp_path, monkeypatch):
+    """S6/D2: la conversación que asegurar resuelve (nueva o reabierta) se
+    sincroniza con las etiquetas del contacto — la disonancia original del
+    feature: el chat de WSP nuevo quedaba sin la tag reserva-confirmada."""
+    fake = ChatwootFake(conversations={"5491111111111": whatsapp_conversation(4242)})
+    llamadas = []
+
+    def spy(settings_arg, conv_id, contacto_id=None, telefono=None, transport=None):
+        llamadas.append((conv_id, telefono))
+        return True
+
+    monkeypatch.setattr("app.mensajeria.sincronizar_conversacion_nueva", spy)
+    app = create_app(_make_settings(tmp_path))
+    from app.db import Base as _Base
+    from app.db import Base
+    Base.metadata.create_all(app.state.engine)
+    with app.state.sessionmaker() as session:
+        _seed_reserva_confirmacion(session)
+        report = enviar_confirmaciones(
+            session, fake.client(), HOY, "reserva_confirmacion",
+            settings=_chatwoot_settings(tmp_path),
+        )
+    assert report["enviados"] == [1]
+    assert llamadas == [(4242, "+5491111111111")]
+
+
+def test_sin_settings_no_sincroniza(tmp_path, monkeypatch):
+    """Compat: llamadas sin `settings` no sincronizan (camino heredado)."""
+    fake = ChatwootFake(conversations={"5491111111111": whatsapp_conversation(4242)})
+    llamadas = []
+    monkeypatch.setattr(
+        "app.mensajeria.sincronizar_conversacion_nueva",
+        lambda *a, **k: llamadas.append(k) or True,
+    )
+    app = create_app(_make_settings(tmp_path))
+    from app.db import Base
+    Base.metadata.create_all(app.state.engine)
+    with app.state.sessionmaker() as session:
+        _seed_reserva_confirmacion(session)
+        report = enviar_confirmaciones(session, fake.client(), HOY, "reserva_confirmacion")
+    assert report["enviados"] == [1]
+    assert llamadas == []

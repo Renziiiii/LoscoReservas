@@ -82,6 +82,7 @@ def e164(telefono: str) -> str:
 class ChatwootClient:
     def __init__(self, base_url: str, api_token: str, account_id: int, transport=None):
         self._account_id = account_id
+        self.http_transport = transport  # T6: reúselo en llamadas derivadas (sync de etiquetas)
         self._http = httpx.Client(
             base_url=base_url,
             headers={
