@@ -17,7 +17,7 @@
   import esLocale from "fullcalendar/locales/es";
   import type { Calendar, CalendarOptions } from "fullcalendar";
   import FullCalendarHost from "./FullCalendarHost.svelte";
-  import { COLORES_ESTADO, type Reserva } from "./reservas";
+  import { COLORES_ESTADO, ESTADOS, type Estado, type Reserva } from "./reservas";
   import "fullcalendar/skeleton.css";
   import "fullcalendar/themes/forma/theme.css";
   import "fullcalendar/themes/forma/palettes/blue.css";
@@ -30,6 +30,39 @@
   let estadoFuente = $state("esperando contexto de Chatwoot…");
   let avisos = $state<string[]>([]);
   let seleccionada = $state<Reserva | null>(null);
+  /** Borrador editable del panel: sólo viaja al backend al guardar. */
+  let draft = $state({
+    nombre: "",
+    fecha: "",
+    hora: "",
+    personas: 2,
+    estado: "pendiente" as Estado,
+    detalles: "",
+    enviar_recordatorio: true,
+  } | null);
+  let guardando = $state(false);
+
+  function cargarDraft(r: Reserva) {
+    draft = {
+      nombre: r.nombre,
+      fecha: r.fecha,
+      hora: hhmm(r.hora),
+      personas: r.personas,
+      estado: r.estado,
+      detalles: r.detalles ?? "",
+      enviar_recordatorio: r.enviar_recordatorio ?? true,
+    };
+  }
+
+  function abrir(r: Reserva) {
+    seleccionada = r;
+    cargarDraft(r);
+  }
+
+  function cerrar() {
+    seleccionada = null;
+    draft = null;
+  }
   let reservas = $state<Reserva[]>([]);
   let cal = $state<Calendar>();
   let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -94,6 +127,75 @@
     });
     avisar(res.ok ? `reserva #${id} → ${fecha} ${hora}` : `error al guardar #${id} (${res.status})`);
     await cargar();
+    // Si la reserva editada está abierta en el panel, refrescala con lo nuevo.
+    if (seleccionada?.id === id && res.ok) {
+      const fresca = reservas.find((r) => r.id === id);
+      if (fresca) {
+        seleccionada = fresca;
+        cargarDraft(fresca);
+      }
+    }
+  }
+
+  /** PATCH completo del borrador (endpoint T10, ReservaUpdateIframe). */
+  async function guardar() {
+    if (!seleccionada || !draft || guardando) return;
+    guardando = true;
+    const id = seleccionada.id;
+    try {
+      const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: draft.nombre,
+          fecha: draft.fecha,
+          hora: draft.hora,
+          personas: draft.personas,
+          estado: draft.estado,
+          detalles: draft.detalles || null,
+          enviar_recordatorio: draft.enviar_recordatorio,
+        }),
+      });
+      if (res.ok) {
+        avisar(`reserva #${id} guardada`);
+        cerrar();
+        await cargar();
+      } else if (res.status === 422) {
+        const cuerpo = await res.json().catch(() => null);
+        const msjs = (cuerpo?.detail ?? [])
+          .map((e: { msg?: string }) => e.msg ?? "")
+          .filter(Boolean);
+        avisar(msjs.length ? `datos inválidos: ${msjs.join(" · ")}` : "datos inválidos (422)");
+      } else {
+        avisar(`error al guardar #${id} (${res.status})`);
+      }
+    } catch {
+      avisar("sin conexión con la API");
+    } finally {
+      guardando = false;
+    }
+  }
+
+  /** DELETE con confirmación (endpoint T10). */
+  async function eliminar() {
+    if (!seleccionada || guardando) return;
+    const id = seleccionada.id;
+    if (!window.confirm(`¿Eliminar la reserva #${id} de ${seleccionada.nombre}?`)) return;
+    guardando = true;
+    try {
+      const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+      if (res.status === 204) {
+        avisar(`reserva #${id} eliminada`);
+        cerrar();
+        await cargar();
+      } else {
+        avisar(`error al eliminar #${id} (${res.status})`);
+      }
+    } catch {
+      avisar("sin conexión con la API");
+    } finally {
+      guardando = false;
+    }
   }
 
   /** appContext: Chatwoot avisa el contacto de la conversación abierta. */
@@ -148,7 +250,7 @@
       crear(fechaISO(info.start), horaISO(info.start));
     },
     eventClick(info) {
-      seleccionada = (info.event.extendedProps as { reserva: Reserva }).reserva;
+      abrir((info.event.extendedProps as { reserva: Reserva }).reserva);
     },
     eventDrop(info) {
       const r = (info.event.extendedProps as { reserva: Reserva }).reserva;
@@ -200,40 +302,83 @@
   </div>
 {/if}
 
-{#if seleccionada}
+{#if seleccionada && draft}
   <div class="mx-2 mt-2 rounded-lg border border-zinc-200 p-3 shadow-sm bg-white">
     <div class="flex items-baseline justify-between gap-2">
-      <h3 class="text-sm font-semibold">{seleccionada.nombre}</h3>
+      <h3 class="text-sm font-semibold">Reserva #{seleccionada.id} · {seleccionada.telefono}</h3>
       <button
+        type="button"
         class="text-xs rounded px-2 py-0.5 border border-zinc-300 hover:bg-zinc-50"
-        onclick={() => (seleccionada = null)}
+        onclick={cerrar}
       >Cerrar</button>
     </div>
-    <dl class="mt-1.5 text-xs space-y-0.5">
-      <div class="flex justify-between gap-3">
-        <dt class="text-zinc-500">Estado</dt>
-        <dd class="font-medium" style="color: {COLORES_ESTADO[seleccionada.estado]?.bg}">{seleccionada.estado}</dd>
+    <form
+      class="mt-2 grid grid-cols-2 gap-2 text-xs"
+      onsubmit={(e) => { e.preventDefault(); guardar(); }}
+    >
+      <label class="col-span-2 flex flex-col gap-0.5">
+        <span class="text-zinc-500">Nombre</span>
+        <input
+          class="rounded border border-zinc-300 px-2 py-1"
+          type="text"
+          bind:value={draft.nombre}
+          required
+        />
+      </label>
+      <label class="flex flex-col gap-0.5">
+        <span class="text-zinc-500">Fecha</span>
+        <input class="rounded border border-zinc-300 px-2 py-1" type="date" bind:value={draft.fecha} required />
+      </label>
+      <label class="flex flex-col gap-0.5">
+        <span class="text-zinc-500">Hora</span>
+        <input class="rounded border border-zinc-300 px-2 py-1" type="time" bind:value={draft.hora} required />
+      </label>
+      <label class="flex flex-col gap-0.5">
+        <span class="text-zinc-500">Personas</span>
+        <input
+          class="rounded border border-zinc-300 px-2 py-1"
+          type="number"
+          min="1"
+          max="200"
+          bind:value={draft.personas}
+          required
+        />
+      </label>
+      <label class="flex flex-col gap-0.5">
+        <span class="text-zinc-500">Estado</span>
+        <select class="rounded border border-zinc-300 px-2 py-1" bind:value={draft.estado}>
+          {#each ESTADOS as e}
+            <option value={e}>{COLORES_ESTADO[e].label}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="col-span-2 flex flex-col gap-0.5">
+        <span class="text-zinc-500">Detalles</span>
+        <input
+          class="rounded border border-zinc-300 px-2 py-1"
+          type="text"
+          bind:value={draft.detalles}
+          placeholder="ej. cumpleaños, mesa cerca de la ventana…"
+        />
+      </label>
+      <label class="col-span-2 flex items-center gap-2">
+        <input type="checkbox" bind:checked={draft.enviar_recordatorio} />
+        <span class="text-zinc-500">Enviar recordatorio por WhatsApp</span>
+      </label>
+      <div class="col-span-2 flex gap-2">
+        <button
+          type="submit"
+          class="flex-1 rounded bg-blue-600 px-2 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          disabled={guardando}
+        >{guardando ? "Guardando…" : "Guardar"}</button>
+        <button
+          type="button"
+          class="rounded border border-red-200 bg-red-50 px-2 py-1.5 font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+          onclick={eliminar}
+          disabled={guardando}
+        >Eliminar</button>
       </div>
-      <div class="flex justify-between gap-3">
-        <dt class="text-zinc-500">Fecha</dt><dd>{seleccionada.fecha} {seleccionada.hora}</dd>
-      </div>
-      <div class="flex justify-between gap-3">
-        <dt class="text-zinc-500">Personas</dt><dd>{seleccionada.personas}</dd>
-      </div>
-      {#if seleccionada.planta}
-        <div class="flex justify-between gap-3">
-          <dt class="text-zinc-500">Piso</dt><dd>{seleccionada.planta}</dd>
-        </div>
-      {/if}
-      <div class="flex justify-between gap-3">
-        <dt class="text-zinc-500">Teléfono</dt><dd class="font-mono">{seleccionada.telefono}</dd>
-      </div>
-      {#if seleccionada.detalles}
-        <div class="flex justify-between gap-3">
-          <dt class="text-zinc-500">Detalle</dt><dd class="text-right">{seleccionada.detalles}</dd>
-        </div>
-      {/if}
-    </dl>
+    </form>
   </div>
 {/if}
 

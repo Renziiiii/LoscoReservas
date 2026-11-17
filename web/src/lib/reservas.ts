@@ -17,8 +17,9 @@ export interface Reserva {
   hora: string;
   personas: number;
   estado: Estado;
-  planta: Planta;
   detalles?: string | null;
+  enviar_recordatorio?: boolean;
+  planta?: Planta;
 }
 
 /** Umbrales de capacidad (regla de Valen, S del feature doc). */
@@ -40,6 +41,8 @@ export function totalPersonasPorDia(reservas: Reserva[]): Map<string, number> {
   }
   return totales;
 }
+
+export const ESTADOS: Estado[] = ["pendiente", "agendada", "confirmada"];
 
 export function estadoOcupacion(total: number): "ok" | "aviso" | "maximo" {
   if (total > CAPACIDAD_MAXIMA) return "maximo";
