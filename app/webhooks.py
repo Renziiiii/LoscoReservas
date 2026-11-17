@@ -20,6 +20,7 @@ Fail-soft: valid-token events NEVER return 5xx — any sync error is logged;
 Chatwoot's own webhook delivery must not break on our internals.
 """
 
+import hmac
 import logging
 
 from fastapi import APIRouter, Header, Query, Request
@@ -38,8 +39,12 @@ router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
 
 def _autorizado(settings: Settings, token: str | None) -> bool:
-    """Shared-secret check, fail-closed (empty configured token => 404)."""
-    return bool(settings.chatwoot_webhook_token) and token == settings.chatwoot_webhook_token
+    """Shared-secret check, fail-closed (empty configured token => 404).
+    Constant-time comparison so timing cannot leak the token."""
+    esperado = settings.chatwoot_webhook_token
+    if not esperado or not token:
+        return False
+    return hmac.compare_digest(esperado, token)
 
 
 def _contacto_de_conversacion(settings: Settings, conversacion: dict) -> int | None:
