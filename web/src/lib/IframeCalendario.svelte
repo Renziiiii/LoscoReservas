@@ -28,7 +28,6 @@
   let key = "";
   let contactoNombre = $state("");
   let telefono = $state("");
-  let estadoFuente = $state("esperando contexto de Chatwoot…");
   /** Aviso único y efímero (no un log): el resultado de la última acción. */
   let toast = $state<{ texto: string; tipo: "ok" | "err" } | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -134,10 +133,8 @@
       );
       if (res.ok) {
         reservas = await res.json();
-        const propias = reservas.filter(esDelContacto).length;
-        estadoFuente = `${reservas.length} reserva(s) · ${propias} del contacto`;
       } else {
-        estadoFuente = `error ${res.status} al cargar`;
+        avisar(`error ${res.status} al cargar las reservas`, "err");
       }
     } catch {
       estadoFuente = "sin conexión con la API";
@@ -251,7 +248,7 @@
     const contact = data.data.contact ?? {};
     const tel = contact.phone_number || contact.phone || "";
     if (!tel) {
-      estadoFuente = "el contacto no tiene teléfono";
+      avisar("el contacto no tiene teléfono", "err");
       return;
     }
     contactoNombre = contact.name || "";
@@ -271,7 +268,9 @@
     allDaySlot: false,
     slotDuration: "00:30:00",
     slotLabelInterval: "01:00",
-    height: "560px",
+    // L65: sin header ni padding — el calendario aprovecha todo el alto
+    // del iframe de Chatwoot (el shell fija html/body/#app a 100%).
+    height: "100%",
     scrollTime: "17:00",
     expandRows: true,
 
@@ -340,15 +339,10 @@
   });
 </script>
 
-<header class="flex items-baseline gap-2 px-3 py-2 border-b border-zinc-200">
-  <span class="font-semibold">Losco</span>
-  <span class="text-xs text-zinc-500 truncate">{contactoNombre || telefono || "sin contacto"}</span>
-  <span class="ml-auto text-[10px] rounded-full px-2 py-0.5 bg-blue-50 text-blue-700 whitespace-nowrap">{estadoFuente}</span>
-</header>
-
+<div class="flex h-full flex-col overflow-hidden">
 {#if toast}
   <div
-    class="px-3 py-1.5 text-xs border-b {toast.tipo === 'ok' ? 'text-teal-800 bg-teal-50' : 'text-red-800 bg-red-50'}"
+    class="px-3 py-1.5 text-xs {toast.tipo === 'ok' ? 'text-teal-800 bg-teal-50' : 'text-red-800 bg-red-50'}"
     role="status"
     transition:fade
   >{toast.texto}</div>
@@ -439,6 +433,7 @@
   </div>
 {/if}
 
-<div class="p-2">
+<div class="min-h-0 flex-1">
   <FullCalendarHost {options} bind:cal />
+</div>
 </div>
