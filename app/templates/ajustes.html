@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Losco — Ajustes{% endblock %}
 {% block content %}
+<div class="panel-layout">
+  <aside class="sidebar">
+    <p class="sidebar-title">Ajustes</p>
+    <nav aria-label="Secciones de ajustes">
+      <!-- Hoy hay una sola sección; cuando haya más panels, agregar acá
+           los links correspondientes (la sección activa usa .active). -->
+      <a class="sidebar-item active" href="/ajustes" aria-current="page">Reservas</a>
+    </nav>
+  </aside>
+  <div class="panel-content">
 <h1>Ajustes de mensajería</h1>
 <p class="muted">Horarios, plantillas y etiqueta de los mensajes automáticos. Se guardan en la base de
 datos: cambiarlos acá re-programa el scheduler al instante, sin reiniciar el contenedor.</p>
@@ -134,4 +144,6 @@ elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.<
 
   <button class="btn primary" type="submit">Guardar ajustes</button>
 </form>
+  </div>
+</div>
 {% endblock %}
