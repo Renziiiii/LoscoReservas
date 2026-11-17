@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import {
+    cargarEstados,
+    ESTADOS,
+    estiloEstado,
+    nombreDeEstado,
+    nombresDeEstados,
+    type Estado,
+    type Reserva,
+  } from "./lib/reservas";
   import CalendarioReservas from "./lib/CalendarioReservas.svelte";
-  import { COLORES_ESTADO, ESTADOS, type Estado, type Reserva } from "./lib/reservas";
   // Look vanilla de FullCalendar (como los demos): theme forma + paleta blue.
   // Estos imports van DESPUÉS de app.css (ver app.css: cascade a propósito).
   import "fullcalendar/skeleton.css";
@@ -10,6 +18,9 @@
 
   let reservas = $state<Reserva[]>([]);
   let fuente = $state("cargando…");
+  /** Estados para la leyenda: el fallback base hasta que cargue la lista
+   * configurable del backend (T5). */
+  let leyenda = $state<Estado[]>(ESTADOS);
   let seleccionada = $state<Reserva | null>(null);
   /** "editar" con la reserva clickeada, "crear" con fecha/hora precargadas. */
   let modo = $state<"editar" | "crear" | null>(null);
@@ -248,6 +259,9 @@
   }
 
   onMount(async () => {
+    // T5: la lista configurable de estados alimenta la leyenda y los
+    // colores; el fallback base cubre el fallo del fetch.
+    if (await cargarEstados("/api/estados")) leyenda = nombresDeEstados();
     await cargarReservas();
     // (2) Polling: todos en la oficina ven cambios sin tocar nada.
     pollTimer = setInterval(cargarReservas, POLL_MS);
@@ -271,9 +285,9 @@ por dentro de cada columna; nada se sale del viewport. -->
 </header>
 
 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 border-b border-zinc-100">
-  {#each Object.entries(COLORES_ESTADO) as [estado, c]}
+  {#each leyenda as estado}
     <span class="inline-flex items-center gap-1.5 text-xs text-zinc-600">
-      <i class="w-3 h-3 rounded-sm inline-block" style="background: {c.bg}"></i>{c.label}
+      <i class="w-3 h-3 rounded-sm inline-block" style="background: {estiloEstado(estado).bg}"></i>{estiloEstado(estado).label}
     </span>
   {/each}
 </div>
@@ -282,6 +296,7 @@ por dentro de cada columna; nada se sale del viewport. -->
   <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
     <CalendarioReservas
     {reservas}
+    estados={leyenda}
     onDatesSet={(inicio, fin) => {
       // (1) Refetch al navegar: cada cambio de vista/fecha trae el rango fresco.
       rangoActual = { inicio, fin };
@@ -348,8 +363,8 @@ por dentro de cada columna; nada se sale del viewport. -->
           <label class="flex flex-col gap-1">
             <span class="text-zinc-500">Estado</span>
             <select class="rounded border border-zinc-300 px-2 py-1" bind:value={draft.estado}>
-              {#each ESTADOS as e}
-                <option value={e}>{COLORES_ESTADO[e].label}</option>
+              {#each leyenda as e}
+                <option value={e}>{nombreDeEstado(e)}</option>
               {/each}
             </select>
           </label>

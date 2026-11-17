@@ -14,10 +14,18 @@
   import esLocale from "fullcalendar/locales/es";
   import type { Calendar, CalendarOptions } from "fullcalendar";
   import FullCalendarHost from "./FullCalendarHost.svelte";
-  import { COLORES_ESTADO, estadoOcupacion, totalPersonasPorDia, type Reserva } from "./reservas";
+  import {
+    coloresEstado,
+    estadoOcupacion,
+    totalPersonasPorDia,
+    type Reserva,
+  } from "./reservas";
 
   interface Props {
     reservas: Reserva[];
+    /** Referencia de la lista configurada de estados (T5): su cambio
+     * dispara el recomputo de los colores de los eventos. */
+    estados?: unknown[];
     onDateClick?: (fechaISO: string) => void;
     onDateSelect?: (inicioISO: string, finISO: string) => void;
     onEventClick?: (r: Reserva) => void;
@@ -27,7 +35,16 @@
     onDatesSet?: (inicioISO: string, finISO: string) => void;
   }
 
-  let { reservas, onDateClick, onDateSelect, onEventClick, onEventDrop, onEventResize, onDatesSet }: Props = $props();
+  let {
+    reservas,
+    estados = [],
+    onDateClick,
+    onDateSelect,
+    onEventClick,
+    onEventDrop,
+    onEventResize,
+    onDatesSet,
+  }: Props = $props();
 
   let cal = $state<Calendar>();
 
@@ -47,8 +64,9 @@
     return h.slice(0, 5);
   }
 
-  const events = $derived.by(() =>
-    reservas.map((r) => ({
+  const events = $derived.by(() => {
+    void estados; // T5: los colores dependen de la lista configurada
+    return reservas.map((r) => ({
       id: String(r.id),
       // El horario lo renderiza la propia grilla; repetirlo en el título
       // lo mostraba dos veces.
@@ -57,12 +75,12 @@
       // `color` alimenta --fc-event-color: es de lo que toma el dot del
       // evento (month/multimonth). backgroundColor/borderColor colorean
       // el bloque en timeGrid. Sin `color`, el dot cae al primary del tema.
-      color: COLORES_ESTADO[r.estado].bg,
-      backgroundColor: COLORES_ESTADO[r.estado].bg,
-      borderColor: COLORES_ESTADO[r.estado].border,
+      color: coloresEstado(r.estado).bg,
+      backgroundColor: coloresEstado(r.estado).bg,
+      borderColor: coloresEstado(r.estado).border,
       extendedProps: { reserva: r },
-    })),
-  );
+    }));
+  });
 
   const options = $derived.by<CalendarOptions>(() => ({
     plugins: [dayGridPlugin, timeGridPlugin, multiMonthPlugin, listPlugin, interactionPlugin, formaThemePlugin],

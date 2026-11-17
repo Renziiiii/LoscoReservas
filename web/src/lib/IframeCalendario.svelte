@@ -18,7 +18,16 @@
   import esLocale from "fullcalendar/locales/es";
   import type { Calendar, CalendarOptions } from "fullcalendar";
   import FullCalendarHost from "./FullCalendarHost.svelte";
-  import { atenuarColor, COLORES_ESTADO, ESTADOS, type Estado, type Reserva } from "./reservas";
+  import {
+    atenuarColor,
+    coloresEstado,
+    cargarEstados,
+    ESTADOS,
+    nombreDeEstado,
+    nombresDeEstados,
+    type Estado,
+    type Reserva,
+  } from "./reservas";
   import "fullcalendar/skeleton.css";
   import "fullcalendar/themes/forma/theme.css";
   import "fullcalendar/themes/forma/palettes/blue.css";
@@ -50,6 +59,10 @@
     enviar_recordatorio: true,
   } | null);
   let guardando = $state(false);
+  /** Estados configurados (T5): el fallback base hasta que la llamada a
+   * /iframe/estados.json llegue.Se referencia en la derivación de
+   * eventos para recomputar los colores cuando llega. */
+  let listaEstados = $state<Estado[]>(ESTADOS);
   /** Baja en dos clicks SIN window.confirm: los iframes de Chatwoot pueden
    * bloquear los diálogos nativos (sandbox sin allow-modals los hace
    * devolver false en silencio — por eso "el botón no hace nada"). */
@@ -321,9 +334,10 @@
     },
   }));
 
-  const events = $derived.by(() =>
-    reservas.map((r) => {
-      const c = COLORES_ESTADO[r.estado] ?? COLORES_ESTADO.pendiente;
+  const events = $derived.by(() => {
+    void listaEstados; // T5: recomputa los colores cuando llegan los estados
+    return reservas.map((r) => {
+      const c = coloresEstado(r.estado);
       // L64: los eventos de OTROS contactos llevan el color mezclado hacia
       // gris (inline, no depende de clases); los del contacto llevan el
       // color pleno + ring azul. El borde de 2px lo fija una clase utility
@@ -339,17 +353,22 @@
         classNames: propia ? ["ring-2 ring-blue-400 shadow-md"] : [],
         extendedProps: { reserva: r },
       };
-    }),
-  );
+    });
+  });
 
   // Sincroniza eventos sin recrear el calendario.
   $effect(() => {
     if (cal) cal.setOption("events", $state.snapshot(events) as any);
   });
 
-  onMount(() => {
+  onMount(async () => {
     key = new URLSearchParams(location.search).get("key") ?? "";
     window.addEventListener("message", onMessage);
+    // T5: la lista configurable alimenta el select del panel y los
+    // colores; el fallback base cubre el fallo del fetch.
+    if (await cargarEstados(`/iframe/estados.json?key=${encodeURIComponent(key)}`)) {
+      listaEstados = nombresDeEstados();
+    }
     pollTimer = setInterval(cargar, POLL_MS);
   });
 
@@ -421,8 +440,8 @@
       <label class="flex flex-col gap-0.5">
         <span class="text-zinc-500">Estado</span>
         <select class="rounded border border-zinc-300 px-2 py-1" bind:value={draft.estado}>
-          {#each ESTADOS as e}
-            <option value={e}>{COLORES_ESTADO[e].label}</option>
+          {#each listaEstados as e}
+            <option value={e}>{nombreDeEstado(e)}</option>
           {/each}
         </select>
       </label>
