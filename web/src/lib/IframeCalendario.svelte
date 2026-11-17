@@ -256,6 +256,27 @@
     cargar();
   }
 
+  /** L66: render custom del evento — personas con 👤 adelante del nombre
+   * y la descripción visible en preview (2ª línea truncada), sin entrar al
+   * evento. HTML escapado a mano: nombre/detalles son texto de clientes. */
+  function esc(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  }
+
+  function eventContent(info: any) {
+    const r = (info.event.extendedProps as { reserva: Reserva }).reserva;
+    const mes = info.view.type === "dayGridMonth";
+    const cabecera = mes
+      ? `${r.personas} 👤 ${esc(r.nombre)}`
+      : `${hhmm(r.hora)} · ${r.personas} 👤 ${esc(r.nombre)}`;
+    const detalle = r.detalles
+      ? `<div class="truncate text-[10px] font-normal opacity-80">${esc(r.detalles)}</div>`
+      : "";
+    return {
+      html: `<div class="overflow-hidden px-1 leading-tight"><div class="truncate text-[11px] font-semibold">${cabecera}</div>${detalle}</div>`,
+    };
+  }
+
   const options = $derived.by<CalendarOptions>(() => ({
     plugins: [timeGridPlugin, dayGridPlugin, interactionPlugin, formaThemePlugin],
     locales: [esLocale],
@@ -283,6 +304,7 @@
 
     events: $state.snapshot(events) as any,
 
+    eventContent,
     dateClick(info) {
       abrirCrear(fechaISO(info.date), horaISO(info.date));
     },
