@@ -3,7 +3,7 @@
  * acá se replican a mano para no tocar el backend.
  */
 
-export type Estado = "pendiente" | "agendada" | "confirmada";
+export type Estado = "pendiente" | "confirmada" | "cancelada";
 
 export type Planta = "alta" | "baja" | null;
 
@@ -29,7 +29,7 @@ export const CAPACIDAD_MAXIMA = 100;
 /** Colores por estado: en la app real vienen de la tabla configurable de la DB. */
 export const COLORES_ESTADO: Record<Estado, { bg: string; border: string; label: string }> = {
   pendiente: { bg: "#f0a500", border: "#c98a00", label: "Pendiente" },
-  agendada: { bg: "#1f93ff", border: "#1668b8", label: "Agendada" },
+  cancelada: { bg: "#e54666", border: "#c22b4e", label: "Cancelada" },
   confirmada: { bg: "#00b877", border: "#009161", label: "Confirmada (oficial)" },
 };
 
@@ -42,7 +42,7 @@ export function totalPersonasPorDia(reservas: Reserva[]): Map<string, number> {
   return totales;
 }
 
-export const ESTADOS: Estado[] = ["pendiente", "agendada", "confirmada"];
+export const ESTADOS: Estado[] = ["pendiente", "confirmada", "cancelada"];
 
 export function estadoOcupacion(total: number): "ok" | "aviso" | "maximo" {
   if (total > CAPACIDAD_MAXIMA) return "maximo";
