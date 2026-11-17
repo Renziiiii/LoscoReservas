@@ -2,11 +2,14 @@
 
 import re
 from datetime import date, datetime, time
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Estado = Literal["pendiente", "confirmada", "cancelada"]
+# S3 (tags-estados-sync): the valid `estado` values are whatever the
+# configured `estados_reserva` table holds — validation is dynamic and
+# lives in app/estados.py `estado_valido` (called by the routers), NOT in a
+# static Literal here. This alias keeps the deep field spreads working.
+Estado = str
 
 
 def _normalize_telefono(value: str) -> str:
@@ -44,6 +47,14 @@ class ReservaBase(BaseModel):
             raise ValueError("nombre cannot be blank")
         return value.strip()
 
+    @field_validator("estado")
+    @classmethod
+    def _estado_normalizado(cls, value: object) -> str:
+        """Store states trimmed/lowercased (slugs of estados_reserva)."""
+        if value is None:
+            return "pendiente"
+        return str(value).strip().lower()
+
     @field_validator("telefono")
     @classmethod
     def _telefono_digits(cls, value: str) -> str:
@@ -76,6 +87,7 @@ class ReservaUpdate(BaseModel):
 
     _nombre_not_blank = field_validator("nombre")(ReservaBase._nombre_not_blank.__func__)  # type: ignore[attr-defined]
     _telefono_digits = field_validator("telefono")(ReservaBase._telefono_digits.__func__)  # type: ignore[attr-defined]
+    _estado_normalizado = field_validator("estado")(ReservaBase._estado_normalizado.__func__)  # type: ignore[attr-defined]
 
 
 class ReservaOut(ReservaBase):

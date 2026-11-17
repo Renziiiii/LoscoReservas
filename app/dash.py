@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -24,7 +25,8 @@ from app.chatwoot import ChatwootClient, variables_plantilla
 from app.config import Settings
 from app.db import get_session
 from app.etiquetas import etiquetar_confirmada, migrar_etiqueta
-from app.models import Reserva
+from app.estados import estado_valido
+from app.models import EstadoReserva, Reserva
 from app.schemas import ReservaCreate
 from app.scheduler import parse_hora, reprogramar
 
@@ -32,7 +34,8 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 SESSION_COOKIE = "losco_session"
-ESTADOS = ["pendiente", "confirmada", "cancelada"]
+# (the fixed ESTADOS list is gone — S3, tags-estados-sync: the form now
+# reads the configured estados_reserva table; see _render_form.)
 
 def _page_user(
     request: Request, token: str | None = Depends(oauth2_scheme)
@@ -102,17 +105,20 @@ def index():
     return FileResponse(CALENDAR_INDEX)
 
 
-def _render_form(request: Request, reserva: Reserva | None, errors: dict | None = None, values: dict | None = None):
+def _render_form(request: Request, reserva: Reserva | None, session: Session,
+                 errors: dict | None = None, values: dict | None = None):
+    estados = session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))
     return templates.TemplateResponse(
         request,
         "reserva_form.html",
-        {"reserva": reserva, "errors": errors or {}, "values": values or {}, "estados": ESTADOS},
+        {"reserva": reserva, "errors": errors or {}, "values": values or {},
+         "estados": estados},
     )
 
 
 @router.get("/nuevo")
-def nueva_reserva(request: Request):
-    return _render_form(request, reserva=None)
+def nueva_reserva(request: Request, session: Session = Depends(get_session)):
+    return _render_form(request, reserva=None, session=session)
 
 
 @router.get("/reservas/{reserva_id}/editar")
@@ -120,13 +126,20 @@ def editar_reserva(request: Request, reserva_id: int, session: Session = Depends
     reserva = session.get(Reserva, reserva_id)
     if reserva is None:
         return _not_found()
-    return _render_form(request, reserva=reserva)
+    return _render_form(request, reserva=reserva, session=session)
 
 
-def _parse_form(form) -> tuple[ReservaCreate | None, dict, dict]:
-    """Returns (parsed_payload_or_None, field_errors, raw_values)."""
+def _parse_form(form, session) -> tuple[ReservaCreate | None, dict, dict]:
+    """Returns (parsed_payload_or_None, field_errors, raw_values). S3
+    (tags-estados-sync): the state is validated against the configured
+    estados_reserva table, with the field-tagged error shape the form uses."""
     raw = {key: form.get(key) for key in ("nombre", "telefono", "fecha", "hora", "personas", "estado", "detalles")}
     raw["enviar_recordatorio"] = "enviar_recordatorio" in form
+    try:
+        estado_valido(session, raw.get("estado"))
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "estado inválido"
+        return None, {"estado": detail.replace("estado desconocido: ", "Estado desconocido: ")}, raw
     try:
         return ReservaCreate(**raw), {}, raw
     except ValidationError as exc:
@@ -136,9 +149,9 @@ def _parse_form(form) -> tuple[ReservaCreate | None, dict, dict]:
 
 @router.post("/reservas")
 def crear_reserva(request: Request, form: dict = Depends(_form_dict), session: Session = Depends(get_session)):
-    payload, errors, values = _parse_form(form)
+    payload, errors, values = _parse_form(form, session)
     if payload is None:
-        return _render_form(request, reserva=None, errors=errors, values=values)
+        return _render_form(request, reserva=None, session=session, errors=errors, values=values)
     reserva = Reserva(**payload.model_dump())
     session.add(reserva)
     session.commit()
@@ -158,9 +171,9 @@ def actualizar_reserva(
     reserva = session.get(Reserva, reserva_id)
     if reserva is None:
         return _not_found()
-    payload, errors, values = _parse_form(form)
+    payload, errors, values = _parse_form(form, session)
     if payload is None:
-        return _render_form(request, reserva=reserva, errors=errors, values=values)
+        return _render_form(request, reserva=reserva, session=session, errors=errors, values=values)
     for field, value in payload.model_dump().items():
         setattr(reserva, field, value)
     session.commit()

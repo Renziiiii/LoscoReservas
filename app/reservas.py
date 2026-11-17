@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.ajustes import obtener_configuracion
 from app.chatwoot import ChatwootClient
 from app.db import get_session
+from app.estados import estado_valido
 from app.etiquetas import etiquetar_confirmada
 from app.models import Reserva
 from app.schemas import ReservaOut, ReservaCreate, ReservaUpdate
@@ -25,7 +26,9 @@ def _get_or_404(reserva_id: int, session: Session) -> Reserva:
 def create_reserva(
     request: Request, payload: ReservaCreate, session: Session = Depends(get_session)
 ):
-    """Crea una reserva nueva. El teléfono se normaliza a dígitos con '+' inicial."""
+    """Crea una reserva nueva. El teléfono se normaliza a dígitos con '+' inicial.
+    El estado se valida contra la tabla configurada (S3, tags-estados-sync)."""
+    estado_valido(session, payload.estado)
     reserva = Reserva(**payload.model_dump())
     session.add(reserva)
     session.commit()
@@ -77,6 +80,8 @@ def update_reserva(
 ):
     reserva = _get_or_404(reserva_id, session)
     changes = payload.model_dump(exclude_unset=True)
+    if "estado" in changes:
+        estado_valido(session, changes["estado"])
     for field, value in changes.items():
         setattr(reserva, field, value)
     session.commit()

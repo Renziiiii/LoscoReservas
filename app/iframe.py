@@ -24,7 +24,7 @@ against the real Chatwoot in T7 (see docs/iframe-chatwoot.md).
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -34,8 +34,9 @@ from app.ajustes import obtener_configuracion
 from app.config import Settings
 from app.contactos import sincronizar_telefono_contacto
 from app.db import get_session
+from app.estados import estado_valido
 from app.etiquetas import etiquetar_confirmada
-from app.models import Reserva
+from app.models import EstadoReserva, Reserva
 from app.schemas import ReservaCreateIframe, ReservaUpdateIframe
 
 router = APIRouter()
@@ -137,6 +138,10 @@ def iframe_reservas_create(
     if not _autorizado(request, key):
         return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
     reserva = Reserva(**payload.model_dump(exclude={"contacto_chatwoot_id"}))
+    try:
+        reserva.estado = estado_valido(session, reserva.estado)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=422, headers=headers)
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
@@ -171,6 +176,11 @@ def iframe_reservas_patch(
         return JSONResponse({"detail": "not found"}, status_code=404, headers=headers)
     datos = payload.model_dump(exclude_unset=True)
     contacto_chatwoot_id = datos.pop("contacto_chatwoot_id", None)
+    try:
+        if "estado" in datos:
+            datos["estado"] = estado_valido(session, datos["estado"])
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=422, headers=headers)
     for field, value in datos.items():
         setattr(reserva, field, value)
     session.commit()
@@ -202,6 +212,36 @@ def iframe_reservas_delete(
     session.delete(reserva)
     session.commit()
     return Response(status_code=204, headers=headers)
+
+
+@router.get("/iframe/estados.json", include_in_schema=False)
+def iframe_estados_json(
+    request: Request,
+    key: str = Query(default=""),
+    session: Session = Depends(get_session),
+):
+    """Configured reservation states for the iframe calendar (S3/S4,
+    tags-estados-sync): the Svelte SPA replaces its hardcoded ESTADOS with
+    this list (fallback lives client-side).
+    """
+    settings: Settings = request.app.state.settings
+    headers = {"Content-Security-Policy": _frame_ancestors(settings)}
+    if not _autorizado(request, key):
+        return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
+    filas = session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))
+    return JSONResponse(
+        [
+            {
+                "nombre": e.nombre,
+                "slug": e.slug,
+                "etiqueta_chatwoot": e.etiqueta_chatwoot,
+                "color": e.color,
+                "envia_recordatorio": e.envia_recordatorio,
+            }
+            for e in filas
+        ],
+        headers=headers,
+    )
 
 
 @router.get("/iframe/reservas.json", include_in_schema=False)

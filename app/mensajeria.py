@@ -19,7 +19,7 @@ daily cron can run safely any number of times.
 import logging
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.chatwoot import (
@@ -27,16 +27,23 @@ from app.chatwoot import (
     NoHayConversacion,
     PlantillaNoDisponible,
 )
-from app.models import Reserva
+from app.models import EstadoReserva, Reserva
 
 logger = logging.getLogger("losco.mensajeria")
 
 
 def _query(session: Session, fecha: date, columna_enviada) -> list[Reserva]:
+    """S4 (tags-estados-sync): whether a reserva gets the automated message
+    now comes from its STATE's `envia_recordatorio` flag (the Tags panel)
+    instead of the old hardcoded `estado != "cancelada"`. The join is LEFT
+    ON PURPOSE: a estado missing from the table keeps sending (the old code
+    only excluded "cancelada") — only an explicit False blocks."""
     stmt = (
         select(Reserva)
+        .outerjoin(EstadoReserva, EstadoReserva.slug == Reserva.estado)
+        .where(or_(EstadoReserva.envia_recordatorio.is_(True),
+                   EstadoReserva.id.is_(None)))
         .where(Reserva.fecha == fecha)
-        .where(Reserva.estado != "cancelada")
         .where(Reserva.enviar_recordatorio.is_(True))
         .where(columna_enviada.is_(None))
         .order_by(Reserva.hora)
