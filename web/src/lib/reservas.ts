@@ -49,3 +49,16 @@ export function estadoOcupacion(total: number): "ok" | "aviso" | "maximo" {
   if (total >= CAPACIDAD_AVISO) return "aviso";
   return "ok";
 }
+
+const GRIS = [156, 163, 175]; // gray-400
+
+/** Mezcla un color hex hacia gris (L64: eventos de otros contactos).
+ * Se aplica como backgroundColor/borderColor inline, que FullCalendar
+ * pinta por su cuenta — la distinción no depende de que cargue una
+ * clase CSS utilitaria. factor 0 = color original, 1 = gris puro. */
+export function atenuarColor(hex: string, factor = 0.55): string {
+  const n = hex.replace("#", "");
+  const canales = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
+  const mezcla = canales.map((c, i) => Math.round(c + (GRIS[i] - c) * factor));
+  return `#${mezcla.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}

@@ -18,7 +18,7 @@
   import esLocale from "fullcalendar/locales/es";
   import type { Calendar, CalendarOptions } from "fullcalendar";
   import FullCalendarHost from "./FullCalendarHost.svelte";
-  import { COLORES_ESTADO, ESTADOS, type Estado, type Reserva } from "./reservas";
+  import { atenuarColor, COLORES_ESTADO, ESTADOS, type Estado, type Reserva } from "./reservas";
   import "fullcalendar/skeleton.css";
   import "fullcalendar/themes/forma/theme.css";
   import "fullcalendar/themes/forma/palettes/blue.css";
@@ -301,20 +301,24 @@
   }));
 
   const events = $derived.by(() =>
-    reservas.map((r) => ({
-      id: String(r.id),
-      title: `${r.nombre} · ${r.personas}p`,
-      start: `${r.fecha}T${hhmm(r.hora)}:00`,
-      color: COLORES_ESTADO[r.estado]?.bg ?? COLORES_ESTADO.pendiente.bg,
-      backgroundColor: COLORES_ESTADO[r.estado]?.bg ?? COLORES_ESTADO.pendiente.bg,
-      borderColor: COLORES_ESTADO[r.estado]?.border ?? COLORES_ESTADO.pendiente.border,
-      // Utilities de Tailwind (el scanner las toma del source): resalta la
-      // del contacto con ring + sombra y atenúa las de otros clientes.
-      classNames: [esDelContacto(r)
-        ? "ring-2 ring-blue-400 shadow-md"
-        : "opacity-60"],
-      extendedProps: { reserva: r },
-    })),
+    reservas.map((r) => {
+      const c = COLORES_ESTADO[r.estado] ?? COLORES_ESTADO.pendiente;
+      // L64: los eventos de OTROS contactos llevan el color mezclado hacia
+      // gris (inline, no depende de clases); los del contacto llevan el
+      // color pleno + ring azul. El borde de 2px lo fija una clase utility
+      // porque FC pinta border-color por estilo inline.
+      const propia = esDelContacto(r);
+      return {
+        id: String(r.id),
+        title: `${r.nombre} · ${r.personas}p`,
+        start: `${r.fecha}T${hhmm(r.hora)}:00`,
+        color: propia ? c.bg : atenuarColor(c.bg),
+        backgroundColor: propia ? c.bg : atenuarColor(c.bg),
+        borderColor: propia ? c.border : atenuarColor(c.border, 0.75),
+        classNames: propia ? ["ring-2 ring-blue-400 shadow-md"] : [],
+        extendedProps: { reserva: r },
+      };
+    }),
   );
 
   // Sincroniza eventos sin recrear el calendario.
