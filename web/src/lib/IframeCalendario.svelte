@@ -118,13 +118,24 @@
     return h.slice(0, 5);
   }
 
+  /** L61: matchea por dígitos el contacto de Chatwoot (mismo criterio del
+   * backend _por_telefono) para marcar sus reservas en el calendario. */
+  function esDelContacto(r: Reserva): boolean {
+    return r.telefono.replace(/\D/g, "") === telefono.replace(/\D/g, "");
+  }
+
   async function cargar() {
     if (!key || !telefono) return;
     try {
-      const res = await fetch(`/iframe/reservas.json?key=${encodeURIComponent(key)}&tel=${encodeURIComponent(telefono)}`);
+      // L61: el calendario muestra TODAS las reservas (disponibilidad del
+      // bar); las del contacto se marcan visualmente (losco-propia).
+      const res = await fetch(
+        `/iframe/reservas.json?key=${encodeURIComponent(key)}&tel=${encodeURIComponent(telefono)}&todas=1`,
+      );
       if (res.ok) {
         reservas = await res.json();
-        estadoFuente = `${reservas.length} reserva(s) del contacto`;
+        const propias = reservas.filter(esDelContacto).length;
+        estadoFuente = `${reservas.length} reserva(s) · ${propias} del contacto`;
       } else {
         estadoFuente = `error ${res.status} al cargar`;
       }
@@ -222,8 +233,7 @@
     }
   }
 
-  /** appContext: Chatwoot avisa el contacto de la conversación abierta. */
-  function onMessage(ev: MessageEvent) {
+  /** appContext: Chatwoot avisa el contacto de la conversación abierta. */  function onMessage(ev: MessageEvent) {
     let data: any;
     try {
       data = typeof ev.data === "string" ? JSON.parse(ev.data) : ev.data;
@@ -291,6 +301,11 @@
       color: COLORES_ESTADO[r.estado]?.bg ?? COLORES_ESTADO.pendiente.bg,
       backgroundColor: COLORES_ESTADO[r.estado]?.bg ?? COLORES_ESTADO.pendiente.bg,
       borderColor: COLORES_ESTADO[r.estado]?.border ?? COLORES_ESTADO.pendiente.border,
+      // Utilities de Tailwind (el scanner las toma del source): resalta la
+      // del contacto con ring + sombra y atenúa las de otros clientes.
+      classNames: [esDelContacto(r)
+        ? "ring-2 ring-blue-400 shadow-md"
+        : "opacity-60"],
       extendedProps: { reserva: r },
     })),
   );

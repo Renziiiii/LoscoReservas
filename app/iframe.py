@@ -208,6 +208,7 @@ def iframe_reservas_delete(
 def iframe_reservas_json(
     request: Request,
     tel: str = Query(min_length=8),
+    todas: bool = Query(default=False),
     key: str = Query(default=""),
     session: Session = Depends(get_session),
 ):
@@ -215,7 +216,12 @@ def iframe_reservas_json(
     headers = {"Content-Security-Policy": _frame_ancestors(settings)}
     if not _autorizado(request, key):
         return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
-    reservas = _por_telefono(session, tel)
+    if todas:
+        # L61: the calendar shows every reservation so the agent sees the
+        # bar's availability, not just this contact's bookings.
+        reservas = list(session.scalars(select(Reserva).order_by(Reserva.fecha, Reserva.hora)))
+    else:
+        reservas = _por_telefono(session, tel)
     return JSONResponse(
         [_serialize(r) for r in reservas],
         headers=headers,
