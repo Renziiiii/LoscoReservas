@@ -74,8 +74,10 @@ uvicorn app.main:app --reload     # http://localhost:8000/docs
    curl http://localhost:8010/api/health        # {"status":"ok"}
    ```
 
-4. Entrá al dashboard: `http://<server>:8010/login` (usuario de
-   `LOSCO_USERS`).
+4. Entrá al calendario: `http://<server>:8010/` (usuario de
+   `LOSCO_USERS`). La ruta raíz sirve el SPA de FullCalendar (vistas
+   Año/Mes/Semana/Día); las páginas Jinja (`/nuevo`, `/ajustes`) siguen
+   disponibles desde el panel.
 
 > Nota: el iframe embebido en Chatwoot requiere que la app sea alcanzable
 > por HTTPS desde el navegador del agente (Chatwoot Dashboard Apps carga
@@ -136,8 +138,10 @@ registre reservas sin tocar el dashboard. Endpoints principales:
 ## Estructura
 
 ```
-app/            config, db, modelos, schemas, API, dashboard, iframe,
+app/            config, db, modelos, schemas, API, panel Jinja, iframe,
                 cliente Chatwoot, mensajería, scheduler
+app/static/calendar/  bundle del SPA de FullCalendar (build de web/, servido en `/`)
+web/            fuente Svelte del calendario (dashboard + iframe Chatwoot)
 docs/           guía del iframe en Chatwoot
 odd/tasks/      documento del feature: specs, tareas y log de decisiones
 ```

@@ -30,6 +30,17 @@ VALID_FORM = {
 }
 
 
+def test_root_serves_calendar_spa(browser):
+    """S1: `/` serves the FullCalendar SPA (bundle index.html) instead of
+    the Jinja dashboard; all library views are reachable from its toolbar."""
+    response = browser.get("/")
+    assert response.status_code == 200
+    assert '<div id="app"></div>' in response.text
+    assert 'src="/static/calendar/assets/' in response.text
+    # Jinja dashboard leftovers must not appear
+    assert 'class="filters"' not in response.text
+
+
 def test_index_anonymous_redirects_to_login(anon_client):
     response = anon_client.get("/", follow_redirects=False)
     assert response.status_code in (302, 303, 307)
@@ -57,20 +68,23 @@ def test_login_ok_sets_cookie_and_redirects(anon_client):
     assert "losco_session" in response.headers.get("set-cookie", "")
 
 
-def test_dashboard_lists_reservas(browser):
+def test_dashboard_lists_reservas(browser, client):
+    """Root is now the calendar SPA (S1); listing happens through the API.
+    Keep pinning that a form-created reserva is visible via the API the SPA
+    consumes (equivalent coverage of the old Jinja-root test)."""
     browser.post("/reservas", data=VALID_FORM)
-    response = browser.get("/")
-    assert response.status_code == 200
-    assert "Martín Sosa" in response.text
-    assert "+5491144445555" in response.text
+    reservas = client.get("/api/reservas").json()
+    assert [r["nombre"] for r in reservas] == ["Martín Sosa"]
+    assert reservas[0]["telefono"] == "+5491144445555"
 
 
-def test_dashboard_filter_by_estado(browser):
+def test_dashboard_filter_by_estado(browser, client):
+    """Estado filtering is done by the SPA via the API (S1); pin the API
+    query the calendar uses for its estado-based rendering."""
     browser.post("/reservas", data=VALID_FORM)
     browser.post("/reservas", data={**VALID_FORM, "nombre": "Ana Ruiz", "estado": "confirmada"})
-    page = browser.get("/", params={"estado": "confirmada"}).text
-    assert "Ana Ruiz" in page
-    assert "Martín Sosa" not in page
+    pendientes = client.get("/api/reservas", params={"estado": "pendiente"}).json()
+    assert [r["nombre"] for r in pendientes] == ["Martín Sosa"]
 
 
 def test_create_via_form_redirects_and_persists(browser, client):
@@ -119,8 +133,8 @@ def test_delete_htmx_returns_empty_fragment(browser, client):
 
 
 def test_brand_logo_links_back_home(browser):
-    """L23: the brand is a link to / so every page (e.g. /ajustes) can
-    navigate back, and it just reads 'Losco'."""
-    response = browser.get("/")
+    """L23: the brand is a link to / (now the calendar SPA, S1) so every
+    Jinja page (e.g. /nuevo) can navigate back; it just reads 'Losco'."""
+    response = browser.get("/nuevo")
     assert response.status_code == 200
     assert '<a class="brand" href="/">Losco</a>' in response.text

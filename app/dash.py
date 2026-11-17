@@ -1,6 +1,5 @@
-"""Admin dashboard: server-rendered Jinja2 + HTMX (S5).
-
-Public router: login/logout. Protected router: everything else.
+"""Admin dashboard: server-rendered Jinja2 + HTMX (S5), minus the root page:
+`/` now serves the FullCalendar SPA (S1, odd/tasks/calendario-en-raiz.md).
 Forms work as plain HTTP (no JS needed); HTMX only enhances delete buttons
 and swap-in-place behavior via the HX-Request header.
 """
@@ -9,10 +8,9 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -90,16 +88,15 @@ def logout():
     return response
 
 
-# --- dashboard ---
+CALENDAR_INDEX = Path(__file__).parent / "static" / "calendar" / "index.html"
 
 
-def _query_reservas(session: Session, estado: str | None, fecha: str | None) -> list[Reserva]:
-    query = select(Reserva).order_by(Reserva.fecha, Reserva.hora)
-    if estado:
-        query = query.where(Reserva.estado == estado)
-    if fecha:
-        query = query.where(Reserva.fecha == fecha)
-    return list(session.scalars(query))
+@router.get("/")
+def index():
+    """S1: serve the FullCalendar SPA as the site root. Login-protected via
+    the router dependency; all library views (Año/Mes/Semana/Día) live in
+    the SPA toolbar. The assets stay on the /static mount."""
+    return FileResponse(CALENDAR_INDEX)
 
 
 def _render_form(request: Request, reserva: Reserva | None, errors: dict | None = None, values: dict | None = None):
@@ -107,16 +104,6 @@ def _render_form(request: Request, reserva: Reserva | None, errors: dict | None 
         request,
         "reserva_form.html",
         {"reserva": reserva, "errors": errors or {}, "values": values or {}, "estados": ESTADOS},
-    )
-
-
-@router.get("/")
-def index(request: Request, estado: str = None, fecha: str = None, session: Session = Depends(get_session)):
-    reservas = _query_reservas(session, estado, fecha)
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {"reservas": reservas, "estado": estado, "fecha": fecha, "estados": ESTADOS},
     )
 
 
