@@ -10,6 +10,7 @@
    * mismo mecanismo que usa el iframe de formularios (/iframe/app).
    */
   import { onDestroy, onMount } from "svelte";
+  import { fade } from "svelte/transition";
   import dayGridPlugin from "fullcalendar/daygrid";
   import timeGridPlugin from "fullcalendar/timegrid";
   import interactionPlugin from "fullcalendar/interaction";
@@ -28,7 +29,17 @@
   let contactoNombre = $state("");
   let telefono = $state("");
   let estadoFuente = $state("esperando contexto de Chatwoot…");
+  /** Aviso único y efímero (no un log): el resultado de la última acción. */
+  let toast = $state<{ texto: string; tipo: "ok" | "err" } | null>(null);
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function avisar(texto: string, tipo: "ok" | "err" = "ok") {
+    toast = { texto, tipo };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast = null), 4000);
+  }
   let seleccionada = $state<Reserva | null>(null);
+  /** "editar" con la reserva clickeada, "crear" con fecha/hora precargadas. */
+  let modo = $state<"editar" | "crear" | null>(null);
   /** Borrador editable del panel: sólo viaja al backend al guardar. */
   let draft = $state({
     nombre: "",
@@ -40,6 +51,11 @@
     enviar_recordatorio: true,
   } | null);
   let guardando = $state(false);
+  /** Baja en dos clicks SIN window.confirm: los iframes de Chatwoot pueden
+   * bloquear los diálogos nativos (sandbox sin allow-modals los hace
+   * devolver false en silencio — por eso "el botón no hace nada"). */
+  let confirmandoEliminar = $state(false);
+  let confirmarTimer: ReturnType<typeof setTimeout> | undefined;
 
   function cargarDraft(r: Reserva) {
     draft = {
@@ -55,12 +71,35 @@
 
   function abrir(r: Reserva) {
     seleccionada = r;
+    modo = "editar";
     cargarDraft(r);
+  }
+
+  /** Alta desde el calendario (dateClick/select): mismo panel, modo crear. */
+  function abrirCrear(fecha: string, hora: string) {
+    if (!telefono) {
+      avisar("el contacto no tiene teléfono cargado", "err");
+      return;
+    }
+    seleccionada = null;
+    modo = "crear";
+    draft = {
+      nombre: contactoNombre || telefono,
+      fecha,
+      hora,
+      personas: 2,
+      estado: "pendiente",
+      detalles: "",
+      enviar_recordatorio: true,
+    };
+    confirmandoEliminar = false;
   }
 
   function cerrar() {
     seleccionada = null;
+    modo = null;
     draft = null;
+    confirmandoEliminar = false;
   }
   let reservas = $state<Reserva[]>([]);
   let cal = $state<Calendar>();
@@ -94,83 +133,90 @@
     }
   }
 
-  async function crear(fecha: string, hora: string) {
-    const ok = window.confirm(
-      `Crear reserva de ${contactoNombre || telefono} el ${fecha} a las ${hora}?`,
-    );
-    if (!ok) return;
-    const res = await fetch(`/iframe/reservas.json?key=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nombre: contactoNombre || telefono,
-        telefono,
-        fecha,
-        hora,
-        personas: 2,
-      }),
-    });
-    await cargar();
-  }
   async function reprogramar(id: number, fecha: string, hora: string) {
     const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fecha, hora }),
     });
-    await cargar();
-    // Si la reserva editada está abierta en el panel, refrescala con lo nuevo.
-    if (seleccionada?.id === id && res.ok) {
-      const fresca = reservas.find((r) => r.id === id);
-      if (fresca) {
-        seleccionada = fresca;
-        cargarDraft(fresca);
+    if (res.ok) {
+      await cargar();
+      // Si la reserva editada está abierta en el panel, refrescala con lo nuevo.
+      if (seleccionada?.id === id) {
+        const fresca = reservas.find((r) => r.id === id);
+        if (fresca) {
+          seleccionada = fresca;
+          cargarDraft(fresca);
+        }
       }
+    } else {
+      avisar(`no se pudo mover la reserva #${id} (${res.status})`, "err");
+      await cargar(); // vuelve el evento a su lugar
     }
   }
 
-  /** PATCH completo del borrador (endpoint T10, ReservaUpdateIframe). */
+  /** POST (modo crear) o PATCH (modo editar) del borrador — endpoints T9/T10. */
   async function guardar() {
-    if (!seleccionada || !draft || guardando) return;
+    if (!draft || guardando) return;
     guardando = true;
-    const id = seleccionada.id;
     try {
-      const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, {
-        method: "PATCH",
+      const cuerpo = JSON.stringify({
+        nombre: draft.nombre,
+        fecha: draft.fecha,
+        hora: draft.hora,
+        personas: draft.personas,
+        estado: draft.estado,
+        detalles: draft.detalles || null,
+        enviar_recordatorio: draft.enviar_recordatorio,
+      });
+      const url = modo === "crear"
+        ? `/iframe/reservas.json?key=${encodeURIComponent(key)}`
+        : `/iframe/reservas/${seleccionada?.id}.json?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: modo === "crear" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: draft.nombre,
-          fecha: draft.fecha,
-          hora: draft.hora,
-          personas: draft.personas,
-          estado: draft.estado,
-          detalles: draft.detalles || null,
-          enviar_recordatorio: draft.enviar_recordatorio,
-        }),
+        body: cuerpo,
       });
       if (res.ok) {
+        avisar(modo === "crear" ? "reserva creada" : "reserva guardada");
         cerrar();
         await cargar();
+      } else {
+        const data = await res.json().catch(() => null);
+        const msjs = (data?.detail ?? [])
+          .map((e: { msg?: string }) => e.msg ?? "")
+          .filter(Boolean);
+        avisar(msjs.length ? msjs.join(" · ") : `error al guardar (${res.status})`, "err");
       }
     } catch {
+      avisar("sin conexión con la API", "err");
     } finally {
       guardando = false;
     }
   }
 
-  /** DELETE con confirmación (endpoint T10). */
+  /** DELETE en dos clicks dentro del panel (endpoint T10). */
   async function eliminar() {
     if (!seleccionada || guardando) return;
-    const id = seleccionada.id;
-    if (!window.confirm(`¿Eliminar la reserva #${id} de ${seleccionada.nombre}?`)) return;
+    if (!confirmandoEliminar) {
+      confirmandoEliminar = true;
+      clearTimeout(confirmarTimer);
+      confirmarTimer = setTimeout(() => (confirmandoEliminar = false), 4000);
+      return;
+    }
     guardando = true;
+    const id = seleccionada.id;
     try {
       const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, { method: "DELETE" });
       if (res.status === 204) {
+        avisar(`reserva #${id} eliminada`);
         cerrar();
         await cargar();
+      } else {
+        avisar(`no se pudo eliminar la reserva #${id} (${res.status})`, "err");
       }
     } catch {
+      avisar("sin conexión con la API", "err");
     } finally {
       guardando = false;
     }
@@ -222,10 +268,10 @@
     events: $state.snapshot(events) as any,
 
     dateClick(info) {
-      crear(fechaISO(info.date), horaISO(info.date));
+      abrirCrear(fechaISO(info.date), horaISO(info.date));
     },
     select(info) {
-      crear(fechaISO(info.start), horaISO(info.start));
+      abrirCrear(fechaISO(info.start), horaISO(info.start));
     },
     eventClick(info) {
       abrir((info.event.extendedProps as { reserva: Reserva }).reserva);
@@ -263,6 +309,8 @@
   onDestroy(() => {
     window.removeEventListener("message", onMessage);
     clearInterval(pollTimer);
+    clearTimeout(toastTimer);
+    clearTimeout(confirmarTimer);
   });
 </script>
 
@@ -272,10 +320,21 @@
   <span class="ml-auto text-[10px] rounded-full px-2 py-0.5 bg-blue-50 text-blue-700 whitespace-nowrap">{estadoFuente}</span>
 </header>
 
-{#if seleccionada && draft}
+{#if toast}
+  <div
+    class="px-3 py-1.5 text-xs border-b {toast.tipo === 'ok' ? 'text-teal-800 bg-teal-50' : 'text-red-800 bg-red-50'}"
+    role="status"
+    transition:fade
+  >{toast.texto}</div>
+{/if}
+
+{#if draft}
   <div class="mx-2 mt-2 rounded-lg border border-zinc-200 p-3 shadow-sm bg-white">
     <div class="flex items-baseline justify-between gap-2">
-      <h3 class="text-sm font-semibold">Reserva #{seleccionada.id} · {seleccionada.telefono}</h3>
+      <h3 class="text-sm font-semibold">
+        {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
+        {#if modo === "editar"} · {seleccionada?.telefono}{/if}
+      </h3>
       <button
         type="button"
         class="text-xs rounded px-2 py-0.5 border border-zinc-300 hover:bg-zinc-50"
@@ -340,13 +399,15 @@
           type="submit"
           class="flex-1 rounded bg-blue-600 px-2 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           disabled={guardando}
-        >{guardando ? "Guardando…" : "Guardar"}</button>
-        <button
-          type="button"
-          class="rounded border border-red-200 bg-red-50 px-2 py-1.5 font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-          onclick={eliminar}
-          disabled={guardando}
-        >Eliminar</button>
+        >{guardando ? "Guardando…" : modo === "crear" ? "Crear reserva" : "Guardar"}</button>
+        {#if modo === "editar"}
+          <button
+            type="button"
+            class="rounded border px-2 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}"
+            onclick={eliminar}
+            disabled={guardando}
+          >{confirmandoEliminar ? "¿Seguro? Click de nuevo" : "Eliminar"}</button>
+        {/if}
       </div>
     </form>
   </div>
