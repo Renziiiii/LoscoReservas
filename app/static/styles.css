@@ -1,166 +1,101 @@
-/* Tema claro alineado con el look del calendario en la raíz (/):
-   SPA Svelte + Tailwind v4 con paleta zinc/blue. Los tokens replican las
-   design tokens del SPA (zinc-200 #e4e4e7, zinc-300 #d4d4d8, zinc-500
-   #71717a, blue-50 #eff6ff, blue-600 #2563eb, blue-700 #1d4ed8) para que
-   las páginas server-rendered (login, formularios, ajustes) se vean como
-   la raíz. Mantener los nombres de clase: las plantillas no cambian. */
-
+/*! tailwindcss v4.3.5 | MIT License | https://tailwindcss.com */
+*.html, y el artifact queda en app/static/styles.css * (comprometido para que la imagen Python no necesite Node; el Dockerfile * lo regenera en el stage webbuild). * * Los nombres de clase viejos (.btn, .card, .banner, .sidebar-item…) se * migraron a utilities en las plantillas: este archivo solo importa el * motor + los tokens. Cualquier CSS "especial" del dashboard va acá abajo, * con los roles de tokens.css, nunca colores crudos. */ @import "tailwindcss";
 :root {
-  --bg: #ffffff;
-  --panel: #ffffff;
-  --border: #e4e4e7;        /* zinc-200 */
-  --border-soft: #f4f4f5;   /* zinc-100 */
-  --border-strong: #d4d4d8; /* zinc-300 */
-  --text: #18181b;          /* zinc-900 */
-  --muted: #71717a;         /* zinc-500 */
-  --faint: #a1a1aa;         /* zinc-400 */
-  --accent: #2563eb;        /* blue-600 */
-  --accent-hover: #1d4ed8;  /* blue-700 */
-  --accent-bg: #eff6ff;     /* blue-50 */
-  --danger: #dc2626;        /* red-600 */
-  --danger-bg: #fef2f2;     /* red-50 */
-  --danger-text: #991b1b;   /* red-800 */
-  --ok: #15803d;            /* green-700 */
-  --ok-bg: #f0fdf4;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-}
-
-* { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
-}
-main { padding: 20px clamp(12px, 4vw, 48px); max-width: 1100px; margin: 0 auto; }
-a { color: var(--accent); text-decoration: none; }
-h1 { font-size: 1.25rem; font-weight: 600; }
-
-/* --- header (igual al header del SPA en la raíz) --- */
-
-.topbar {
-  display: flex; align-items: baseline; gap: 12px;
-  background: var(--panel); border-bottom: 1px solid var(--border);
-  padding: 12px 20px;
-  position: sticky; top: 0; z-index: 10;
-}
-.brand {
-  display: flex; align-items: center; gap: 8px;
-  font-weight: 600; letter-spacing: .025em; font-size: 1.25rem;
-  text-decoration: none; color: var(--text);
-}
-.brand-logo {
-  width: 28px; height: 28px; border-radius: 6px; display: block;
-}
-.spacer { flex: 1; }
-.topbar .btn { align-self: center; }
-
-/* --- botones (como las acciones del SPA) --- */
-
-.btn {
-  background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
-  border-radius: var(--radius); padding: 6px 14px; font: inherit; font-weight: 500;
-  cursor: pointer; display: inline-block; text-decoration: none;
-}
-.btn:hover { background: #fafafa; } /* zinc-50 */
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
-.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-.btn.danger { color: var(--danger); }
-.btn.small { padding: 3px 10px; font-size: .85rem; }
-.btn.wide { width: 100%; }
-.inline { display: inline; }
-
-/* --- cards y banners --- */
-
-.card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm); padding: 20px;
-}
-.banner {
-  border-radius: var(--radius); padding: 10px 14px; font-size: .875rem;
-}
-/* tags-panel-v2 S7: Nombre + Etiqueta de Chatwoot comparten fila (columna
-   en pantallas angostas). */
-.tag-card {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 14px; margin: 0 0 14px;
-}
-.tag-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-}
-@media (max-width: 640px) {
-  .tag-row { grid-template-columns: 1fr; }
-}
-.banner.success { background: var(--ok-bg); color: var(--ok); }
-
-/* --- sidebar del panel (ajustes): secciones a la izquierda --- */
-
-.panel-layout { display: flex; align-items: flex-start; gap: 24px; }
-.sidebar {
-  width: 220px; flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  padding: 4px 16px 4px 4px;
-}
-.sidebar-title {
-  font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--faint); padding: 0 10px 8px;
-}
-.sidebar-item {
-  display: block; padding: 8px 10px; margin-bottom: 2px;
-  border-radius: var(--radius); color: var(--muted);
-  font-size: .875rem; font-weight: 500; text-decoration: none;
-}
-.sidebar-item:hover { background: var(--border-soft); color: var(--text); }
-.sidebar-item.active { background: var(--accent-bg); color: var(--accent-hover); }
-.panel-content { flex: 1; min-width: 0; max-width: 760px; }
-
-@media (max-width: 720px) {
-  .panel-layout { flex-direction: column; gap: 12px; }
-  .sidebar {
-    width: 100%; border-right: 0; border-bottom: 1px solid var(--border);
-    padding: 0 0 8px;
+  --white: 255 255 255;
+  --brand-rgb: 37 99 235;
+  --brand-hover-rgb: 29 78 216;
+  --brand-dark-rgb: 59 130 246;
+  --brand-dark-hover-rgb: 96 165 250;
+  --zinc-50: 250 250 250;
+  --zinc-100: 244 244 245;
+  --zinc-200: 228 228 231;
+  --zinc-300: 212 212 216;
+  --zinc-400: 161 161 170;
+  --zinc-500: 113 113 122;
+  --zinc-600: 82 82 91;
+  --zinc-700: 63 63 70;
+  --zinc-800: 39 39 42;
+  --zinc-900: 24 24 27;
+  --zinc-950: 9 9 11;
+  --background: rgb(var(--zinc-50));
+  --surface: rgb(var(--white));
+  --surface-hover: rgb(var(--zinc-50));
+  --surface-active: rgb(var(--zinc-100));
+  --line-weak: rgb(var(--zinc-100));
+  --line: rgb(var(--zinc-200));
+  --line-strong: rgb(var(--zinc-300));
+  --fg: rgb(var(--zinc-900));
+  --muted: rgb(var(--zinc-500));
+  --faint: rgb(var(--zinc-400));
+  --brand: rgb(var(--brand-rgb));
+  --brand-hover: rgb(var(--brand-hover-rgb));
+  --brand-soft: rgb(var(--brand-rgb));
+  @supports (color: color-mix(in lab, red, red)) {
+    --brand-soft: color-mix(in oklab, rgb(var(--brand-rgb)) 10%, rgb(var(--white)));
   }
-  .sidebar-item { display: inline-block; margin-right: 6px; margin-bottom: 0; }
+  --brand-text: rgb(var(--brand-rgb));
+  @supports (color: color-mix(in lab, red, red)) {
+    --brand-text: color-mix(in oklab, rgb(var(--brand-rgb)) 80%, black);
+  }
+  --on-brand: rgb(var(--white));
+  --danger: rgb(220 38 38);
+  --danger-hover: rgb(185 28 28);
+  --danger-soft: rgb(254 226 226);
+  --danger-surface: rgb(254 242 242);
+  --danger-text: rgb(153 27 27);
+  --ok: rgb(13 148 136);
+  --ok-surface: rgb(240 253 250);
+  --ok-text: rgb(17 94 89);
+  --warning: rgb(217 119 6);
+  --warning-surface: rgb(255 251 235);
+  --warning-text: rgb(180 83 9);
 }
-
-/* --- tablas / listas (reservado para páginas futuras) --- */
-
-table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: var(--radius-lg); overflow: hidden; }
-th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
-th { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .5px; }
-.actions { text-align: right; white-space: nowrap; }
-.muted { color: var(--muted); font-size: .85rem; }
-.empty { color: var(--muted); font-style: italic; }
-
-.badge { border-radius: 999px; padding: 1px 10px; font-size: .8rem; }
-.badge.pendiente { background: var(--accent-bg); color: var(--accent-hover); }
-.badge.confirmada { background: var(--ok-bg); color: var(--ok); }
-.badge.cancelada { background: var(--danger-bg); color: var(--danger-text); }
-
-/* --- formularios --- */
-
-.filters { display: flex; gap: 14px; align-items: end; margin-bottom: 18px; flex-wrap: wrap; }
-label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
-input, select, textarea {
-  background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
-  border-radius: var(--radius); padding: 7px 10px; font: inherit;
+.dark {
+  --background: rgb(var(--zinc-950));
+  --surface: rgb(var(--zinc-900));
+  --surface-hover: rgb(var(--zinc-800));
+  --surface-active: rgb(var(--zinc-700));
+  --line-weak: rgb(var(--zinc-800));
+  --line: rgb(var(--zinc-700));
+  --line-strong: rgb(var(--zinc-600));
+  --fg: rgb(var(--zinc-50));
+  --muted: rgb(var(--zinc-400));
+  --faint: rgb(var(--zinc-500));
+  --brand: rgb(var(--brand-dark-rgb));
+  --brand-hover: rgb(var(--brand-dark-hover-rgb));
+  --brand-soft: rgb(var(--brand-dark-rgb));
+  @supports (color: color-mix(in lab, red, red)) {
+    --brand-soft: color-mix(in oklab, rgb(var(--brand-dark-rgb)) 16%, rgb(var(--zinc-900)));
+  }
+  --brand-text: rgb(147 197 253);
+  --on-brand: rgb(var(--white));
+  --danger: rgb(239 68 68);
+  --danger-hover: rgb(248 113 113);
+  --danger-soft: rgb(239 68 68);
+  @supports (color: color-mix(in lab, red, red)) {
+    --danger-soft: color-mix(in oklab, rgb(239 68 68) 20%, rgb(var(--zinc-900)));
+  }
+  --danger-surface: rgb(239 68 68);
+  @supports (color: color-mix(in lab, red, red)) {
+    --danger-surface: color-mix(in oklab, rgb(239 68 68) 12%, rgb(var(--zinc-900)));
+  }
+  --danger-text: rgb(252 165 165);
+  --ok: rgb(45 212 191);
+  --ok-surface: rgb(45 212 191);
+  @supports (color: color-mix(in lab, red, red)) {
+    --ok-surface: color-mix(in oklab, rgb(45 212 191) 12%, rgb(var(--zinc-900)));
+  }
+  --ok-text: rgb(153 246 228);
+  --warning: rgb(251 191 36);
+  --warning-surface: rgb(251 191 36);
+  @supports (color: color-mix(in lab, red, red)) {
+    --warning-surface: color-mix(in oklab, rgb(251 191 36) 12%, rgb(var(--zinc-900)));
+  }
+  --warning-text: rgb(252 211 77);
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.check { flex-direction: row; align-items: center; }
-
-.stack { display: flex; flex-direction: column; gap: 14px; max-width: 460px; }
-.row { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }
-.error { color: var(--danger-text); background: var(--danger-bg); padding: 6px 12px; border-radius: var(--radius); }
-
-/* --- login --- */
-
-body.centered { display: grid; place-items: center; min-height: 100vh; }
-.login-card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 32px; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 16px;
+:root {
+  color-scheme: light;
 }
-.login-card h1 { margin: 0; font-weight: 600; text-align: center; }
-.login-card .brand-logo { width: 56px; height: 56px; border-radius: 12px; margin: 0 auto; }
-.login-card h1 b { color: var(--accent); }
-.login-card form { display: flex; flex-direction: column; gap: 14px; }
+.dark {
+  color-scheme: dark;
+}

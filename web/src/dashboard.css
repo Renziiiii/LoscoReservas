@@ -1,0 +1,14 @@
+/* Dashboard server-rendered (Jinja2 + HTMX): mismo vocabulario de tokens
+ * que el SPA (tokens.css es la fuente única), utilities de Tailwind.
+ *
+ * Se compila con @tailwindcss/cli (npm run build:dashboard) escaneando
+ * app/templates/**/*.html, y el artifact queda en app/static/styles.css
+ * (comprometido para que la imagen Python no necesite Node; el Dockerfile
+ * lo regenera en el stage webbuild).
+ *
+ * Los nombres de clase viejos (.btn, .card, .banner, .sidebar-item…) se
+ * migraron a utilities en las plantillas: este archivo solo importa el
+ * motor + los tokens. Cualquier CSS "especial" del dashboard va acá abajo,
+ * con los roles de tokens.css, nunca colores crudos. */
+@import "tailwindcss";
+@import "./tokens.css";

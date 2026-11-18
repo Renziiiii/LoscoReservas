@@ -5,17 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ingresar — Losco Reservas</title>
   <link rel="icon" type="image/jpeg" href="/static/LoscoLogo.jpg">
+  {# Tema class-based (tokens.css): default según prefers-color-scheme,
+     sin FOUC (mismo patrón que base.html y el SPA). #}
+  <script>
+    if (matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body class="centered">
-  <div class="login-card">
-    <img class="brand-logo" src="/static/LoscoLogo.jpg" alt="Losco">
-    <h1>Losco <b>Reservas</b></h1>
-    {% if error %}<p class="error">{{ error }}</p>{% endif %}
-    <form method="post" action="/login">
-      <label>Usuario <input name="username" autocomplete="username" required autofocus></label>
-      <label>Contraseña <input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="btn primary wide" type="submit">Ingresar</button>
+<body class="grid min-h-screen place-items-center bg-background text-fg antialiased">
+  <div class="flex w-[min(360px,90vw)] flex-col gap-4 rounded-xl border border-line bg-surface p-8 shadow-sm">
+    <img class="mx-auto h-14 w-14 rounded-xl" src="/static/LoscoLogo.jpg" alt="Losco">
+    <h1 class="m-0 text-center text-xl font-semibold">Losco <b class="text-brand">Reservas</b></h1>
+    {% if error %}<p class="rounded-lg bg-danger-surface px-3 py-1.5 text-sm text-danger-text">{{ error }}</p>{% endif %}
+    <form method="post" action="/login" class="flex flex-col gap-3.5">
+      <label class="flex flex-col gap-1 text-sm text-muted">Usuario
+        <input name="username" autocomplete="username" required autofocus
+          class="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand">
+      </label>
+      <label class="flex flex-col gap-1 text-sm text-muted">Contraseña
+        <input name="password" type="password" autocomplete="current-password" required
+          class="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand">
+      </label>
+      <button class="inline-flex w-full cursor-pointer items-center justify-center rounded-lg bg-brand px-3.5 py-1.5 font-medium text-on-brand hover:bg-brand-hover" type="submit">Ingresar</button>
     </form>
   </div>
 </body>
