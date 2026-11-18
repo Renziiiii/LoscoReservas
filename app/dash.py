@@ -152,7 +152,10 @@ def crear_reserva(request: Request, form: dict = Depends(_form_dict), session: S
     payload, errors, values = _parse_form(form, session)
     if payload is None:
         return _render_form(request, reserva=None, session=session, errors=errors, values=values)
-    reserva = Reserva(**payload.model_dump())
+    # tags-panel-v2 S5: persist the VALIDATED slug (fallback default when
+    # `pendiente` was deleted), not the raw form value.
+    reserva = Reserva(**{**payload.model_dump(),
+                         "estado": estado_valido(session, payload.estado)})
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
@@ -179,6 +182,9 @@ def actualizar_reserva(
         return _render_form(request, reserva=reserva, session=session, errors=errors, values=values)
     for field, value in payload.model_dump().items():
         setattr(reserva, field, value)
+    # tags-panel-v2 S5: same as create — store the validated slug (the form
+    # may omit `estado`, which falls back to the first configured estado).
+    reserva.estado = estado_valido(session, payload.estado)
     session.commit()
     session.refresh(reserva)
     sincronizar_estado_reserva(
@@ -190,7 +196,7 @@ def actualizar_reserva(
 
 # --- ajustes de mensajería (L19: horas y plantillas en el panel, no env) ---
 
-AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora")
 
 
 def _render_ajustes(
@@ -201,6 +207,7 @@ def _render_ajustes(
     migrados_contactos: int | None = None,
     migrados_conv: int | None = None,
     fallas: int | None = None,
+    estados: list | None = None,
 ):
     return templates.TemplateResponse(
         request,
@@ -212,6 +219,9 @@ def _render_ajustes(
             "migrados_contactos": migrados_contactos,
             "migrados_conv": migrados_conv,
             "fallas": fallas,
+            # tags-panel-v2 S2: nombre/tag de cada estado para mostrar cuál
+            # queda como disparador con la tag elegida.
+            "estados": estados or [],
         },
     )
 
@@ -232,12 +242,17 @@ def ajustes_page(
     session: Session = Depends(get_session),
 ):
     config = obtener_configuracion(session, request.app.state.settings)
+    estados = [
+        {"nombre": e.nombre, "slug": e.slug, "etiqueta_chatwoot": e.etiqueta_chatwoot}
+        for e in session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))
+    ]
     return _render_ajustes(
         request,
         config,
         migrados_contactos=migrados_contactos,
         migrados_conv=migrados_conv,
         fallas=fallas,
+        estados=estados,
     )
 
 
@@ -255,7 +270,9 @@ def _chatwoot_configurado(settings: Settings) -> bool:
 # T4 (tags-estados-sync): `etiqueta_confirmada` salió de la config de
 # mensajería — el mapeo estado↔etiqueta vive en `estados_reserva` y se
 # edita en la página Tags (/ajustes/tags).
-AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+# tags-panel-v2 (S2/D1): `tag_disparadora` vuelve a la config de mensajería:
+# la tag elegida señala al estado disparador que gatea el cron.
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora")
 
 
 def _ajustes_payload(config) -> dict:
@@ -286,6 +303,8 @@ def ajustes_json_put(
     for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "Es obligatorio."
+    if not values["tag_disparadora"]:
+        errors["tag_disparadora"] = "Es obligatoria: decide qué estado dispara los envíos."
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
@@ -307,6 +326,7 @@ def ajustes_submit(
     hora_invitados: str | None = Form(None),
     plantilla_confirmacion: str | None = Form(None),
     plantilla_invitados: str | None = Form(None),
+    tag_disparadora: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     """T4: solo mensajería. Un POST legacy que aún envíe
@@ -317,6 +337,7 @@ def ajustes_submit(
         "hora_invitados": (hora_invitados or "").strip(),
         "plantilla_confirmacion": (plantilla_confirmacion or "").strip(),
         "plantilla_invitados": (plantilla_invitados or "").strip(),
+        "tag_disparadora": (tag_disparadora or "").strip(),
     }
     errors: dict[str, str] = {}
     for campo in ("hora_confirmacion", "hora_invitados"):
@@ -327,15 +348,27 @@ def ajustes_submit(
     for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "El nombre de la plantilla es obligatorio."
+    if not values["tag_disparadora"]:
+        errors["tag_disparadora"] = "La tag disparadora es obligatoria."
     if errors:
         config = obtener_configuracion(session, settings)
-        return _render_ajustes(request, config, errors=errors, values=values)
+        return _render_ajustes(
+            request,
+            config,
+            errors=errors,
+            values=values,
+            estados=[
+                {"nombre": e.nombre, "slug": e.slug, "etiqueta_chatwoot": e.etiqueta_chatwoot}
+                for e in session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))
+            ],
+        )
 
     config = obtener_configuracion(session, settings)
     config.hora_confirmacion = values["hora_confirmacion"]
     config.hora_invitados = values["hora_invitados"]
     config.plantilla_confirmacion = values["plantilla_confirmacion"]
     config.plantilla_invitados = values["plantilla_invitados"]
+    config.tag_disparadora = values["tag_disparadora"]
     session.commit()
 
     scheduler = getattr(request.app.state, "scheduler", None)
@@ -378,12 +411,84 @@ def ajustes_tags_page(
     )
 
 
+@router.post("/ajustes/tags/guardar")
+async def ajustes_tags_guardar(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """S3 (tags-panel-v2): UN solo botón Guardar al final de la página
+    persiste TODAS las ediciones: renombres + etiquetas de las tarjetas
+    existentes (campos `nombre_<slug>` / `etiqueta_<slug>`) y altas nuevas
+    (listas `nuevo_nombre` / `nuevo_etiqueta`). S6: no toca
+    `envia_recordatorio` (ya no se decide acá). Declarada ANTES de la ruta
+    `{slug}` para que 'guardar' no se interprete como slug."""
+    form = await request.form()
+
+    # 1) ediciones de tarjetas existentes
+    cambios_etiqueta: list[tuple[EstadoReserva, str | None]] = []
+    slugs = {key[len("nombre_"):] for key in form.keys() if key.startswith("nombre_")}
+    for slug in slugs:
+        estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
+        if estado is None:
+            continue
+        nombre = str(form.get(f"nombre_{slug}") or "").strip()
+        if not nombre or len(nombre) > 60:
+            return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
+        vieja = estado.etiqueta_chatwoot
+        nueva = str(form.get(f"etiqueta_{slug}") or "").strip() or None
+        estado.nombre = nombre
+        estado.etiqueta_chatwoot = nueva
+        if vieja and nueva and vieja != nueva:
+            cambios_etiqueta.append((estado, vieja))
+
+    # 2) altas nuevas (filas agregadas por el botón + Nuevo estado)
+    nombres = [n.strip() for n in form.getlist("nuevo_nombre")]
+    etiquetas = form.getlist("nuevo_etiqueta")
+    for i, nombre in enumerate(nombres):
+        if not nombre or len(nombre) > 60:
+            return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
+        slug = _slug_de(nombre)
+        if session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug)):
+            return _redirect_tags(error=f"Ya existe el estado '{slug}'.")
+        etiqueta = str(etiquetas[i] if i < len(etiquetas) else "").strip() or None
+        session.add(EstadoReserva(nombre=nombre, slug=slug,
+                                  etiqueta_chatwoot=etiqueta))
+    session.commit()
+
+    # 3) migración de etiqueta: solo si UNA etiqueta cambió (el flujo de
+    # confirmación es por etiqueta; múltiples cambios se guardan sin oferta)
+    if len(cambios_etiqueta) == 1 and _chatwoot_configurado(request.app.state.settings):
+        estado, vieja = cambios_etiqueta[0]
+        nueva = estado.etiqueta_chatwoot
+        try:
+            chatwoot = ChatwootClient(
+                request.app.state.settings.chatwoot_base_url,
+                request.app.state.settings.chatwoot_api_token,
+                request.app.state.settings.chatwoot_account_id,
+            )
+            total_contactos = len(chatwoot.contactos_con_etiqueta(vieja))
+            total_conversaciones = len(chatwoot.conversaciones_con_etiqueta(vieja))
+        except Exception:
+            return _redirect_tags()
+        if total_contactos + total_conversaciones > 0:
+            return templates.TemplateResponse(
+                request,
+                "migrar_etiqueta.html",
+                {
+                    "vieja": vieja,
+                    "nueva": nueva,
+                    "total_contactos": total_contactos,
+                    "total_conversaciones": total_conversaciones,
+                },
+            )
+    return _redirect_tags()
+
+
 @router.post("/ajustes/tags")
 def ajustes_tags_crear(
     request: Request,
     nombre: str | None = Form(None),
     etiqueta_chatwoot: str | None = Form(None),
-    envia_recordatorio: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     nombre = (nombre or "").strip()
@@ -395,8 +500,7 @@ def ajustes_tags_crear(
     session.add(EstadoReserva(
         nombre=nombre, slug=slug,
         etiqueta_chatwoot=(etiqueta_chatwoot or "").strip() or None,
-        envia_recordatorio=envia_recordatorio is not None,
-    ))
+    ))  # S6 (tags-panel-v2): envia_recordatorio ya no se edita por UI
     session.commit()
     return _redirect_tags()
 
@@ -407,7 +511,6 @@ def ajustes_tags_editar(
     slug: str,
     nombre: str | None = Form(None),
     etiqueta_chatwoot: str | None = Form(None),
-    envia_recordatorio: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     """Edición de un estado. Al cambiar la etiqueta de Chatwoot se consulta
@@ -424,7 +527,6 @@ def ajustes_tags_editar(
     nueva = (etiqueta_chatwoot or "").strip() or None
     estado.nombre = nombre
     estado.etiqueta_chatwoot = nueva
-    estado.envia_recordatorio = envia_recordatorio is not None
     session.commit()
 
     if _chatwoot_configurado(settings) and vieja and nueva and vieja != nueva:
@@ -459,8 +561,8 @@ def ajustes_tags_eliminar(
     estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
     if estado is None:
         return _redirect_tags(error="Estado no encontrado.")
-    if estado.es_base:
-        return _redirect_tags(error="Los tres estados base no se pueden eliminar.")
+    # S5 (tags-panel-v2, D2): los estados base son solo un template — TODOS
+    # se pueden eliminar; el único guard que queda es reservas en uso.
     en_uso = session.scalar(
         select(func.count()).select_from(Reserva).where(Reserva.estado == slug)
     )

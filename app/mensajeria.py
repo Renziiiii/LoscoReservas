@@ -19,7 +19,7 @@ daily cron can run safely any number of times.
 import logging
 from datetime import UTC, date, datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.chatwoot import (
@@ -29,22 +29,28 @@ from app.chatwoot import (
 )
 from app.config import Settings
 from app.etiquetas import sincronizar_conversacion_nueva
-from app.models import EstadoReserva, Reserva
+from app.models import Configuracion, EstadoReserva, Reserva
 
 logger = logging.getLogger("losco.mensajeria")
 
 
 def _query(session: Session, fecha: date, columna_enviada) -> list[Reserva]:
-    """S4 (tags-estados-sync): whether a reserva gets the automated message
-    now comes from its STATE's `envia_recordatorio` flag (the Tags panel)
-    instead of the old hardcoded `estado != "cancelada"`. The join is LEFT
-    ON PURPOSE: a estado missing from the table keeps sending (the old code
-    only excluded "cancelada") — only an explicit False blocks."""
+    """S2 (tags-panel-v2): whether a reserva gets the automated message is
+    now decided by the TRIGGER TAG configured in /ajustes
+    (`Configuracion.tag_disparadora`): only reservas whose estado has that
+    tag mapped (`EstadoReserva.etiqueta_chatwoot`) are picked. INNER join on
+    purpose: an unmapped or unknown estado sends nothing (D1: the trigger
+    lives solely in Mensajes automatizados now). The legacy per-estado
+    `envia_recordatorio` flag is no longer part of the decision (S6)."""
+    tag_disparadora = (
+        select(Configuracion.tag_disparadora)
+        .where(Configuracion.id == 1)
+        .scalar_subquery()
+    )
     stmt = (
         select(Reserva)
-        .outerjoin(EstadoReserva, EstadoReserva.slug == Reserva.estado)
-        .where(or_(EstadoReserva.envia_recordatorio.is_(True),
-                   EstadoReserva.id.is_(None)))
+        .join(EstadoReserva, EstadoReserva.slug == Reserva.estado)
+        .where(EstadoReserva.etiqueta_chatwoot == tag_disparadora)
         .where(Reserva.fecha == fecha)
         .where(Reserva.enviar_recordatorio.is_(True))
         .where(columna_enviada.is_(None))

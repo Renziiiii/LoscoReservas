@@ -26,9 +26,11 @@ def create_reserva(
     request: Request, payload: ReservaCreate, session: Session = Depends(get_session)
 ):
     """Crea una reserva nueva. El teléfono se normaliza a dígitos con '+' inicial.
-    El estado se valida contra la tabla configurada (S3, tags-estados-sync)."""
-    estado_valido(session, payload.estado)
-    reserva = Reserva(**payload.model_dump())
+    El estado se valida contra la tabla configurada (S3, tags-estados-sync).
+    tags-panel-v2 S5: se persiste el slug VALIDADO (con el fallback del
+    default cuando `pendiente` fue eliminada), no el valor crudo."""
+    reserva = Reserva(**{**payload.model_dump(),
+                         "estado": estado_valido(session, payload.estado)})
     session.add(reserva)
     session.commit()
     session.refresh(reserva)

@@ -60,21 +60,35 @@ def normalizar_estado(value: str | None) -> str:
 def estado_valido(session: Session, value: str | None) -> str:
     """The normalized slug, or HTTPException 422 when the state is not in
     the configured table (S3: dynamic validation replaces schemas' `Estado`
-    Literal — same status code and semantics the API promised before)."""
+    Literal — same status code and semantics the API promised before).
+    S5 (tags-panel-v2, D2): the DEFAULT slug is special — the user may have
+    deleted `pendiente` (base states are all deletable now), so an implicit
+    default falls back to the first configured estado instead of failing;
+    an explicit unknown slug still raises 422."""
     slug = normalizar_estado(value)
     existe = session.scalar(
         select(EstadoReserva).where(EstadoReserva.slug == slug)
     )
-    if existe is None:
-        disponibles = [s for (s,) in session.execute(select(EstadoReserva.slug))]
+    if existe is not None:
+        return slug
+    if value in (None, "", "pendiente"):
+        primero = session.scalar(
+            select(EstadoReserva.slug).order_by(EstadoReserva.id).limit(1)
+        )
+        if primero is not None:
+            return primero
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"estado desconocido: {slug!r}. Estados configurados: "
-                f"{', '.join(disponibles) or '(ninguno)'}"
-            ),
+            detail="no hay estados configurados: creá uno en Ajustes > Tags",
         )
-    return slug
+    disponibles = [s for (s,) in session.execute(select(EstadoReserva.slug))]
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"estado desconocido: {slug!r}. Estados configurados: "
+            f"{', '.join(disponibles) or '(ninguno)'}"
+        ),
+    )
 
 
 def _fila(estado: EstadoReserva) -> dict:
@@ -174,16 +188,13 @@ def editar_estado(slug: str, payload: dict, session: Session = Depends(get_sessi
     return _fila(estado)
 
 
-@router.delete("/{slug}", summary="Eliminar un estado (no base, sin reservas)")
+@router.delete("/{slug}", summary="Eliminar un estado (sin reservas asociadas)")
 def eliminar_estado(slug: str, session: Session = Depends(get_session)):
     estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
     if estado is None:
         raise HTTPException(status_code=404, detail="estado no encontrado")
-    if estado.es_base:
-        raise HTTPException(
-            status_code=409,
-            detail="el estado es base del sistema y no se puede eliminar",
-        )
+    # S5 (tags-panel-v2, D2): los estados base ya no están protegidos — son
+    # un template; el único guard que queda es reservas en uso.
     en_uso = session.scalar(
         select(func.count()).select_from(Reserva).where(Reserva.estado == slug)
     )

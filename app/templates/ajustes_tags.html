@@ -14,8 +14,8 @@
 <h1>Tags</h1>
 <p class="muted">Estados que puede tener una reserva y su etiqueta de Chatwoot. La etiqueta
 se aplica al contacto y a todos sus chats (actuales y futuros) cuando una reserva
-toma ese estado; al cambiar de estado la anterior se retira. Los tres estados
-base no se pueden eliminar.</p>
+toma ese estado; al cambiar de estado la anterior se retira. El guardado es uno
+solo: editá todas las tarjetas y apretá Guardar al final.</p>
 
 {% if migrados_contactos is not none and migrados_conv is not none %}
 <div class="banner success">
@@ -27,62 +27,110 @@ base no se pueden eliminar.</p>
 <div class="banner error">{{ error }}</div>
 {% endif %}
 
-{% for estado in estados %}
-<form method="post" action="/ajustes/tags/{{ estado.slug }}" class="card">
-  <h2>{{ estado.nombre }}{% if estado.es_base %} <span class="muted">(estado base)</span>{% endif %}</h2>
-  <input type="hidden" name="slug" value="{{ estado.slug }}">
-  <label>Nombre
-    <input type="text" name="nombre" required maxlength="60" value="{{ estado.nombre }}">
-  </label>
-  <label>Etiqueta de Chatwoot (vacío = no sincronizar)
-    <input type="text" name="etiqueta_chatwoot" maxlength="120" list="etiquetas-cuenta"
-      value="{{ estado.etiqueta_chatwoot or '' }}">
-  </label>
-  <label>
-    <input type="checkbox" name="envia_recordatorio" {% if estado.envia_recordatorio %}checked{% endif %}>
-    Enviar mensajes automáticos a las reservas de este estado
-  </label>
-  <button class="btn primary" type="submit">Guardar</button>
-  {% if not estado.es_base %}
-  <a class="btn danger" href="/ajustes/tags/{{ estado.slug }}/eliminar"
-     onclick="return confirm('¿Eliminar el estado {{ estado.nombre }}?')">Eliminar</a>
-  {% endif %}
-</form>
-{% endfor %}
+{# S3 (tags-panel-v2): UN solo form con todas las tarjetas y UN botón Guardar
+   al final. S5: los estados base son solo un template — todas las tarjetas
+   tienen Eliminar. S7: Nombre y Etiqueta comparten fila. #}
+<form method="post" action="/ajustes/tags/guardar" class="card">
+  {% for estado in estados %}
+  <fieldset class="tag-card">
+    <h2>{{ estado.nombre }}{% if estado.es_base %} <span class="muted">(base)</span>{% endif %}</h2>
+    <div class="tag-row">
+      <label>Nombre
+        <input type="text" name="nombre_{{ estado.slug }}" required maxlength="60" value="{{ estado.nombre }}">
+      </label>
+      <label>Etiqueta de Chatwoot (vacío = no sincronizar)
+        <select name="etiqueta_{{ estado.slug }}" class="sel-etiqueta" data-valor="{{ estado.etiqueta_chatwoot or '' }}"></select>
+      </label>
+    </div>
+    <button class="btn danger" type="submit"
+      formaction="/ajustes/tags/{{ estado.slug }}/eliminar" formmethod="post"
+      onclick="return confirm('¿Eliminar el estado {{ estado.nombre }}?')">Eliminar</button>
+  </fieldset>
+  {% endfor %}
 
-<form method="post" action="/ajustes/tags" class="card">
-  <h2>Nuevo estado</h2>
-  <label>Nombre
-    <input type="text" name="nombre" required maxlength="60" placeholder="Ej: Demorada">
-  </label>
-  <label>Etiqueta de Chatwoot (opcional)
-    <input type="text" name="etiqueta_chatwoot" maxlength="120" list="etiquetas-cuenta">
-  </label>
-  <label>
-    <input type="checkbox" name="envia_recordatorio" checked>
-    Enviar mensajes automáticos a las reservas de este estado
-  </label>
-  <button class="btn primary" type="submit">Crear estado</button>
+  <template id="tpl-nuevo-estado">
+    <fieldset class="tag-card nuevo">
+      <h2 class="muted">Nuevo estado</h2>
+      <div class="tag-row">
+        <label>Nombre
+          <input type="text" name="nuevo_nombre" maxlength="60" placeholder="Ej: Demorada">
+        </label>
+        <label>Etiqueta de Chatwoot
+          <select name="nuevo_etiqueta" class="sel-etiqueta nuevo" data-valor=""></select>
+        </label>
+      </div>
+      <button class="btn" type="button" onclick="this.closest('fieldset').remove()">Quitar</button>
+    </fieldset>
+  </template>
+  <button class="btn" type="button" id="agregar-estado">+ Nuevo estado</button>
+
+  <p id="etiquetas-tags-estado" class="muted">Cargando etiquetas de la cuenta…</p>
+  <button class="btn primary" type="submit">Guardar</button>
 </form>
-<datalist id="etiquetas-cuenta"></datalist>
-<p id="etiquetas-tags-estado" class="muted">Cargando etiquetas de la cuenta…</p>
 <script>
+  var OPCION_VACIA = '(vacío = no sincronizar)';
+
+  function poblarSelect(select, etiquetas) {
+    select.innerHTML = '';
+    var vacia = document.createElement('option');
+    vacia.value = '';
+    vacia.textContent = OPCION_VACIA;
+    select.appendChild(vacia);
+    var actual = select.dataset.valor || '';
+    var conocido = false;
+    etiquetas.forEach(function (title) {
+      var opt = document.createElement('option');
+      opt.value = title;
+      opt.textContent = title;
+      select.appendChild(opt);
+      if (title === actual) { conocido = true; }
+    });
+    select.value = conocido ? actual : '';
+  }
+
+  // S4: fallback texto manual si la API de Chatwoot no responde: el select
+  // se reemplaza por un input con el MISMO name para no perder el guardado.
+  function degradarATexto(select) {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.name = select.name;
+    input.maxLength = 120;
+    input.value = select.dataset.valor || '';
+    input.placeholder = 'Escribí el nombre de la etiqueta a mano';
+    select.replaceWith(input);
+  }
+
+  function conectarNuevos(etiquetas) {
+    document.querySelectorAll('select.sel-etiqueta.nuevo').forEach(function (select) {
+      poblarSelect(select, etiquetas);
+      select.classList.remove('nuevo');
+    });
+  }
+
   fetch('/ajustes/etiquetas.json')
     .then(function (r) { return r.json(); })
     .then(function (data) {
       var estado = document.getElementById('etiquetas-tags-estado');
-      if (data.motivo) { estado.textContent = data.motivo; return; }
+      if (data.motivo) {
+        estado.textContent = data.motivo;
+        document.querySelectorAll('select.sel-etiqueta').forEach(degradarATexto);
+        return;
+      }
       estado.textContent = data.etiquetas.length + ' etiquetas de la cuenta cargadas.';
-      var datalist = document.getElementById('etiquetas-cuenta');
-      data.etiquetas.forEach(function (e) {
-        var opt = document.createElement('option');
-        opt.value = e.title;
-        datalist.appendChild(opt);
+      var lista = data.etiquetas.map(function (e) { return e.title; });
+      document.querySelectorAll('select.sel-etiqueta').forEach(function (select) {
+        poblarSelect(select, lista);
+      });
+      document.getElementById('agregar-estado').addEventListener('click', function () {
+        var clon = document.getElementById('tpl-nuevo-estado').content.cloneNode(true);
+        this.before(clon);
+        conectarNuevos(lista);
       });
     })
     .catch(function () {
       document.getElementById('etiquetas-tags-estado').textContent =
         'No se pudieron cargar las etiquetas: escribí el nombre a mano.';
+      document.querySelectorAll('select.sel-etiqueta').forEach(degradarATexto);
     });
 </script>
   </div>
