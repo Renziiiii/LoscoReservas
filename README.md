@@ -26,12 +26,17 @@ dentro de Chatwoot (que sirve WhatsApp, Instagram y Messenger).
   ese mismo texto (el panel avisa si la plantilla elegida tiene variables).
   Cada reserva puede excluirse de los recordatorios (checkbox
   "Enviar recordatorios", default sí).
-- **Etiqueta "Reserva confirmada" en Chatwoot**: al confirmar una reserva
-  (dashboard, iframe o API) el contacto y su conversación abierta reciben la
-  etiqueta configurada en Ajustes, para que aparezca en Contactos > Etiquetado
-  con… y en Conversaciones > Etiquetas (selector con las etiquetas de la cuenta
-  de Chatwoot). Migración opcional de contactos y conversaciones al cambiarla
-  (fail-soft: sin token configurado el guardado no falla).
+- **Tags sincronizadas con Chatwoot**: los estados de las reservas son
+  configurables (Ajustes → Tags: alta/edición/baja, envía-recordatorios y
+  color por estado) y cada estado puede mapearse a una etiqueta de Chatwoot.
+  Al cambiar el estado de una reserva, la etiqueta del estado anterior se
+  retira del contacto y de TODOS sus chats, y se aplica la del estado nuevo;
+  todo chat nuevo del contacto (el WhatsApp que crea la mensajería
+  automatizada, o cualquiera creado por un agente/otro canal vía webhook)
+  hereda las etiquetas vigentes del contacto. Cambiar la etiqueta asignada a
+  un estado ofrece migrar contactos y conversaciones existentes
+  (fail-soft: sin token configurado el guardado no falla). Detalle del
+  webhook: docs/webhook-chatwoot.md.
 - **Iframe en Chatwoot** con las reservas del contacto de la conversación
   (mecanismo Dashboard Apps) — ver `docs/iframe-chatwoot.md`.
 
@@ -74,8 +79,12 @@ uvicorn app.main:app --reload     # http://localhost:8000/docs
    curl http://localhost:8010/api/health        # {"status":"ok"}
    ```
 
-4. Entrá al dashboard: `http://<server>:8010/login` (usuario de
-   `LOSCO_USERS`).
+4. Entrá al calendario: `http://<server>:8010/` (usuario de
+   `LOSCO_USERS`). La ruta raíz sirve el SPA de FullCalendar (vistas
+   Año/Mes/Semana/Día/Lista): editá o creá reservas desde el panel,
+   saltá al chat de Chatwoot de cada reserva y configurá los mensajes
+   automatizados desde "Mensajes automatizados". Las páginas Jinja
+   (`/nuevo`, `/ajustes`) siguen disponibles.
 
 > Nota: el iframe embebido en Chatwoot requiere que la app sea alcanzable
 > por HTTPS desde el navegador del agente (Chatwoot Dashboard Apps carga
@@ -117,6 +126,7 @@ Ver `env.example` con todos los valores y comentarios. Resumen:
 | `LOSCO_HORA_CONFIRMACION` | `09:00` | Valor inicial de la hora T-48h — después se edita en el panel (`/ajustes`) |
 | `LOSCO_HORA_INVITADOS` | `17:15` | Valor inicial de la hora día D — después se edita en el panel (`/ajustes`) |
 | `LOSCO_SCHEDULER_ENABLED` | `false` | Prende el scheduler (mensajería) |
+| `LOSCO_CHATWOOT_WEBHOOK_TOKEN` | vacío | Token del webhook de Chatwoot (vacío = endpoint inactivo, ver `docs/webhook-chatwoot.md`) |
 | `LOSCO_IFRAME_KEY` | vacío | Clave de embed del iframe (vacía = iframe deshabilitado) |
 | `LOSCO_IFRAME_ORIGINS` | `*` | Orígenes con permiso de embeber (CSP frame-ancestors) |
 
@@ -132,12 +142,19 @@ registre reservas sin tocar el dashboard. Endpoints principales:
 - `GET/PATCH/DELETE /api/reservas/{id}` — leer, actualizar parcial,
   borrar.
 - `GET /api/health` — liveness (público).
+- `GET /api/estados` / `POST/PATCH/DELETE /api/estados/{slug}` — Estados de
+  reserva configurables y su etiqueta de Chatwoot (Crear 409 si duplica
+  slug; PATCH no cambia el slug; DELETE 409 para los 3 estados base o los
+  que tienen reservas asociadas).
 
 ## Estructura
 
 ```
-app/            config, db, modelos, schemas, API, dashboard, iframe,
-                cliente Chatwoot, mensajería, scheduler
+app/            config, db, modelos, schemas, API, panel Jinja, iframe,
+                cliente Chatwoot, mensajería, scheduler, estados/tags,
+                webhook de Chatwoot (app/webhooks.py)
+app/static/calendar/  bundle del SPA de FullCalendar (build de web/, servido en `/`)
+web/            fuente Svelte del calendario (dashboard + iframe Chatwoot)
 docs/           guía del iframe en Chatwoot
 odd/tasks/      documento del feature: specs, tareas y log de decisiones
 ```

@@ -82,6 +82,7 @@ def e164(telefono: str) -> str:
 class ChatwootClient:
     def __init__(self, base_url: str, api_token: str, account_id: int, transport=None):
         self._account_id = account_id
+        self.http_transport = transport  # T6: reúselo en llamadas derivadas (sync de etiquetas)
         self._http = httpx.Client(
             base_url=base_url,
             headers={
@@ -122,6 +123,11 @@ class ChatwootClient:
         )
         response.raise_for_status()
         return response.json().get("payload") or {}
+
+    def obtener_conversacion(self, conversacion_id: int) -> dict | None:
+        """One conversation by id; None when missing."""
+        data = self._get(f"/api/v1/accounts/{self._account_id}/conversations/{conversacion_id}")
+        return data if isinstance(data, dict) and data.get("id") else None
 
     def conversaciones(self, contacto_id: int) -> list[dict]:
         data = self._get(f"/api/v1/accounts/{self._account_id}/contacts/{contacto_id}/conversations")
@@ -183,13 +189,15 @@ class ChatwootClient:
     def plantillas_whatsapp(self) -> list[dict]:
         """Templates of the first inbox that answers, preferring native
         WhatsApp (Channel::Whatsapp), then Twilio, then anything else:
-        non-WhatsApp inboxes answer 422 and are skipped."""
+        non-WhatsApp inboxes answer 422 and are skipped. Chatwoot 4.x
+        answers 404 for inboxes without cached templates - skipped too
+        (the user's test environment hit this)."""
         for inbox in sorted(self.listar_inboxes(), key=_prioridad_inbox_whatsapp):
             try:
                 return self.listar_plantillas(inbox["id"])
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 422:
-                    continue  # not a WhatsApp inbox: try the next one
+                if exc.response.status_code in (404, 422):
+                    continue  # not a WhatsApp inbox / no cached templates
                 raise
         return []
 

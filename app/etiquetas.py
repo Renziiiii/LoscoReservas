@@ -12,9 +12,8 @@ error, the reservation save must never fail — the incident is only logged.
 
 import logging
 
-from app.chatwoot import ChatwootClient, NoHayConversacion
+from app.chatwoot import ChatwootClient
 from app.config import Settings
-from app.models import Reserva
 
 logger = logging.getLogger("losco.etiquetas")
 
@@ -27,26 +26,133 @@ def _configurado(settings: Settings) -> bool:
     )
 
 
-def etiquetar_confirmada(
-    settings: Settings, reserva: Reserva, etiqueta: str, transport=None
+def _resolver_contacto(chatwoot: ChatwootClient, telefono: str, contacto_id: int | None) -> dict | None:
+    """The Chatwoot contact for this reserva: by known id first, else phone
+    search. Returns None when Chatwoot has no such contact."""
+    if contacto_id:
+        contacto = chatwoot.obtener_contacto(contacto_id)
+        if contacto is not None:
+            return contacto
+    return chatwoot.buscar_contacto(telefono)
+
+
+def _objetivo_labels(actuales: list[str], quitar: str | None, poner: str | None) -> list[str]:
+    """The label list the contact/conversation must end up with: the old
+    state's label removed (D1), the new one added, everything else kept."""
+    objetivo = [l for l in actuales if not (quitar and l == quitar)]
+    if poner and poner not in objetivo:
+        objetivo.append(poner)
+    return objetivo
+
+
+def sincronizar_estado_reserva(
+    settings: Settings,
+    telefono: str,
+    mapa: dict[str, str | None],
+    estado_anterior: str | None,
+    estado_nuevo: str | None,
+    contacto_id: int | None = None,
+    transport=None,
 ) -> bool:
-    """Add the configured confirmed-reservation label to the reserva's
-    contact AND its open conversation in Chatwoot (S10/L27). Returns True
-    when the label ended up on the contact or the conversation; False
-    otherwise (not confirmada / unconfigured / no contact / both failed).
-    Never raises.
+    """Reflect the reserva's state change on Chatwoot (S5/D1): the OLD
+    state's mapped label is removed from the contact AND every one of its
+    conversations (open, resolved, any channel), the NEW state's mapped
+    label is added the same way. Other labels are preserved.
 
-    Contact and conversation labeling are independent: a failure in one
-    must not undo or prevent the other.
+    `mapa` maps estado slug -> Chatwoot label (or None), as built by
+    app.estados.mapa_etiquetas. When neither side has a label (or both
+    states map to the same), nothing is called and True is returned
+    (nothing to do). Returns False only on hard failure (unconfigured /
+    no contact / contact write failed).
 
-    `transport` is an httpx transport override for tests."""
-    if reserva.estado != "confirmada":
-        return False
-    if not etiqueta:
-        logger.info("etiqueta vacía: no se etiquetó la reserva %s", reserva.id)
-        return False
+    Fail-soft by design (L6): never raises; the reserva save must succeed
+    regardless. `contacto_id` skips the phone search when the caller
+    already knows the Chatwoot contact (iframe). `transport` is an httpx
+    transport override for tests."""
     if not _configurado(settings):
-        logger.info("Chatwoot sin configurar: no se etiquetó la reserva %s", reserva.id)
+        logger.info("Chatwoot sin configurar: no se sincronizaron etiquetas de %s", telefono)
+        return False
+    vieja = (mapa or {}).get(estado_anterior) if estado_anterior else None
+    nueva = (mapa or {}).get(estado_nuevo) if estado_nuevo else None
+    if not vieja and not nueva:
+        return True
+
+    try:
+        chatwoot = ChatwootClient(
+            settings.chatwoot_base_url,
+            settings.chatwoot_api_token,
+            settings.chatwoot_account_id,
+            transport=transport,
+        )
+    except Exception as exc:
+        logger.warning("sincronizar etiquetas de %s falló: %s", telefono, exc)
+        return False
+
+    try:
+        contacto = _resolver_contacto(chatwoot, telefono, contacto_id)
+    except Exception as exc:
+        logger.warning("buscar contacto de %s falló: %s", telefono, exc)
+        return False
+    if contacto is None:
+        logger.info("sin contacto en Chatwoot para %s: etiquetas no sincronizadas", telefono)
+        return False
+    contacto_id_resuelto = contacto["id"]
+
+    ok = False
+    # --- el contacto ---
+    try:
+        actuales = chatwoot.listar_labels_contacto(contacto_id_resuelto)
+        objetivo = _objetivo_labels(actuales, vieja, nueva)
+        if objetivo != actuales:
+            chatwoot.agregar_labels_contacto(contacto_id_resuelto, objetivo)
+        ok = True
+    except Exception as exc:
+        logger.warning("etiquetas del contacto %s no se actualizaron: %s", contacto_id_resuelto, exc)
+
+    # --- TODAS sus conversaciones existentes (S5) ---
+    try:
+        conversaciones = chatwoot.conversaciones(contacto_id_resuelto)
+        for conv in conversaciones:
+            conv_id = conv.get("id")
+            if conv_id is None:
+                continue
+            actuales = conv.get("labels")
+            if actuales is None:  # defensive: payload without labels
+                try:
+                    actuales = chatwoot.listar_labels_conversacion(conv_id)
+                except Exception as exc:
+                    logger.warning("labels de la conversación %s no leídas: %s", conv_id, exc)
+                    continue
+            objetivo = _objetivo_labels(actuales, vieja, nueva)
+            if objetivo == actuales:
+                continue
+            try:
+                chatwoot.agregar_labels_conversacion(conv_id, objetivo)
+                ok = True
+            except Exception as exc:
+                logger.warning("etiquetas de la conversación %s no se actualizaron: %s", conv_id, exc)
+    except Exception as exc:
+        logger.warning("listar conversaciones del contacto %s falló: %s", contacto_id_resuelto, exc)
+
+    return ok
+
+
+def sincronizar_conversacion_nueva(
+    settings: Settings,
+    conversacion_id: int,
+    contacto_id: int | None = None,
+    telefono: str | None = None,
+    transport=None,
+) -> bool:
+    """Copy ALL of the contact's current labels onto a newly created
+    conversation (S6/D2): labels that arrive from any channel or agents
+    reach the chats created later (by automated messaging or otherwise).
+    Idempotent: only POSTs the label list when something is missing.
+
+    Returns True when labels were added, False when nothing was needed or
+    the sync failed. Fail-soft: never raises."""
+    if not _configurado(settings):
+        logger.info("Chatwoot sin configurar: no se sincronizó la conversación %s", conversacion_id)
         return False
     try:
         chatwoot = ChatwootClient(
@@ -55,45 +161,25 @@ def etiquetar_confirmada(
             settings.chatwoot_account_id,
             transport=transport,
         )
-        contacto = chatwoot.buscar_contacto(reserva.telefono)
-        if contacto is None:
-            logger.info(
-                "sin contacto en Chatwoot para %s: no se etiquetó la reserva %s",
-                reserva.telefono,
-                reserva.id,
-            )
+        if contacto_id is None:
+            contacto = chatwoot.buscar_contacto(telefono or "")
+            if contacto is None:
+                logger.info("sin contacto para la conversación %s: etiquetas no copiadas", conversacion_id)
+                return False
+            contacto_id = contacto["id"]
+        etiquetas_contacto = chatwoot.listar_labels_contacto(contacto_id)
+        if not etiquetas_contacto:
             return False
-
-        contact_success = False
-        try:
-            actuales = chatwoot.listar_labels_contacto(contacto["id"])
-            if etiqueta not in actuales:
-                chatwoot.agregar_labels_contacto(contacto["id"], actuales + [etiqueta])
-            contact_success = True
-        except Exception as exc:
-            logger.warning(
-                "etiquetar contacto falló para la reserva %s: %s", reserva.id, exc
-            )
-
-        try:
-            conv = chatwoot.conversacion_abierta(reserva.telefono)
-            current = chatwoot.listar_labels_conversacion(conv["id"])
-            if etiqueta not in current:
-                chatwoot.agregar_labels_conversacion(conv["id"], current + [etiqueta])
-            return True
-        except NoHayConversacion:
-            logger.info(
-                "sin conversación abierta para %s: no se etiquetó la conversación",
-                reserva.telefono,
-            )
-        except Exception as exc:
-            logger.warning(
-                "etiquetar conversación falló para la reserva %s: %s", reserva.id, exc
-            )
-
-        return contact_success
-    except Exception as exc:  # transport/HTTP errors must not break the save
-        logger.warning("etiquetar en Chatwoot falló para la reserva %s: %s", reserva.id, exc)
+        actuales = chatwoot.listar_labels_conversacion(conversacion_id)
+        faltantes = [l for l in etiquetas_contacto if l not in actuales]
+        if not faltantes:
+            return False
+        chatwoot.agregar_labels_conversacion(conversacion_id, actuales + faltantes)
+        logger.info("conversación %s etiquetada desde el contacto %s: %s",
+                    conversacion_id, contacto_id, faltantes)
+        return True
+    except Exception as exc:
+        logger.warning("sincronizar conversación nueva %s falló: %s", conversacion_id, exc)
         return False
 
 
@@ -199,3 +285,44 @@ def migrar_etiqueta(
         "migrados_conversaciones": migrados_conversaciones,
         "fallas": fallas,
     }
+
+def sincronizar_contacto_todas_las_conversaciones(
+    settings: Settings, contacto_id: int, transport=None
+) -> bool:
+    """Propagate a contact's CURRENT labels to every conversation the
+    contact already has (T3 / contact_updated webhook): work like S5's
+    per-conversation merge reads each conversation's labels and adds what
+    is missing. Never removes (the webhook fires after ANY contact edit).
+
+    Returns True when at least one conversation was updated; False on
+    failure or when nothing was missing. Fail-soft: never raises."""
+    if not _configurado(settings):
+        return False
+    try:
+        chatwoot = ChatwootClient(
+            settings.chatwoot_base_url,
+            settings.chatwoot_api_token,
+            settings.chatwoot_account_id,
+            transport=transport,
+        )
+        etiquetas_contacto = chatwoot.listar_labels_contacto(contacto_id)
+        conversaciones = chatwoot.conversaciones(contacto_id)
+    except Exception as exc:
+        logger.warning("propagar etiquetas del contacto %s falló: %s", contacto_id, exc)
+        return False
+    if not etiquetas_contacto or not conversaciones:
+        return False
+    ok = False
+    for conv in conversaciones:
+        conv_id = conv.get("id")
+        if conv_id is None:
+            continue
+        try:
+            actuales = chatwoot.listar_labels_conversacion(conv_id)
+            faltantes = [l for l in etiquetas_contacto if l not in actuales]
+            if faltantes:
+                chatwoot.agregar_labels_conversacion(conv_id, actuales + faltantes)
+                ok = True
+        except Exception as exc:
+            logger.warning("propagar etiquetas a la conversación %s falló: %s", conv_id, exc)
+    return ok

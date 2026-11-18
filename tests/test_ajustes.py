@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.etiquetas import migrar_etiqueta
 from app.main import create_app
-from app.models import Base, Configuracion, Reserva
+from app.models import Base, Configuracion, EstadoReserva as Estado, Reserva
 from app.scheduler import build_scheduler, reprogramar
 
 TEST_USERS = "valen:testpass123"
@@ -100,6 +100,8 @@ def test_post_ajustes_persists_values(client):
 
     follow = client.get("/ajustes")
     for expected in FORM_DATA.values():
+        if expected == FORM_DATA["etiqueta_confirmada"]:
+            continue  # T4: la etiqueta ya no vive en /ajustes
         assert expected in follow.text
 
     with client.app.state.sessionmaker() as session:
@@ -222,10 +224,13 @@ from app.chatwoot import ChatwootClient
 class ChatwootPlantillasFake:
     """MockTransport-backed Chatwoot with canned inboxes + templates."""
 
-    def __init__(self, inboxes=None, plantillas_por_inbox=None):
+    def __init__(self, inboxes=None, plantillas_por_inbox=None, status_por_inbox=None):
         self.requests = []
         self.inboxes = inboxes or []
         self.plantillas_por_inbox = plantillas_por_inbox or {}
+        # inbox id -> HTTP status override (e.g. 404 for Chatwoot 4.x
+        # non-WhatsApp inboxes without cached templates)
+        self.status_por_inbox = status_por_inbox or {}
 
         def handler(request: httpx.Request) -> httpx.Response:
             self.requests.append((request.method, request.url.path))
@@ -234,6 +239,8 @@ class ChatwootPlantillasFake:
                 return httpx.Response(200, json={"payload": self.inboxes})
             if "/message_templates" in path:
                 inbox_id = int(path.split("/")[-2])
+                if inbox_id in self.status_por_inbox:
+                    return httpx.Response(self.status_por_inbox[inbox_id], json={})
                 if inbox_id in self.plantillas_por_inbox:
                     return httpx.Response(
                         200, json={"payload": self.plantillas_por_inbox[inbox_id]}
@@ -283,6 +290,32 @@ def test_plantillas_whatsapp_prefiere_inbox_whatsapp_nativo():
     # only the native WhatsApp inbox was queried (priority short-circuit)
     template_requests = [p for m, p in fake.requests if "message_templates" in p]
     assert template_requests == ["/api/v1/accounts/1/inboxes/5/message_templates"]
+
+
+def test_plantillas_whatsapp_salta_inbox_que_responde_404():
+    """Chatwoot 4.x answers 404 (not 422) for non-WhatsApp inboxes without
+    cached templates; skip it like any other non-WhatsApp inbox instead of
+    surfacing the raw error (user's test environment hit this)."""
+    fake = ChatwootPlantillasFake(
+        inboxes=[
+            {"id": 2, "channel_type": "Channel::Webhook"},
+            {"id": 5, "channel_type": "Channel::Whatsapp"},
+        ],
+        plantillas_por_inbox={5: PLANTILLAS},
+        status_por_inbox={2: 404},
+    )
+    plantillas = fake.client().plantillas_whatsapp()
+    assert [p["name"] for p in plantillas] == [
+        "reserva_confirmacion", "invitados_confirmacion",
+    ]
+
+
+def test_plantillas_whatsapp_devuelve_vacio_si_todos_fallan():
+    fake = ChatwootPlantillasFake(
+        inboxes=[{"id": 2, "channel_type": "Channel::Whatsapp"}],
+        status_por_inbox={2: 404},
+    )
+    assert fake.client().plantillas_whatsapp() == []
 
 
 def test_plantillas_whatsapp_salta_inboxes_que_no_son_de_whatsapp():
@@ -447,37 +480,26 @@ def test_chatwoot_client_envia_ambos_headers_de_auth():
 
 # --- T15 (parte A): etiqueta de reserva confirmada configurable (L24) ---
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 
-def test_ajustes_page_contiene_selector_de_etiqueta(client):
+def test_etiqueta_ya_no_vive_en_ajustes(client):
+    """T4 (tags-estados-sync): the confirmed label left /ajustes — it is
+    now the Tags page (estado `confirmada` -> etiqueta_chatwoot)."""
     response = client.get("/ajustes")
     assert response.status_code == 200
-    for marker in ('id="sel-etiqueta-confirmada"', 'name="etiqueta_confirmada"'):
-        assert marker in response.text, marker
+    assert 'name="etiqueta_confirmada"' not in response.text
 
 
-def test_ajustes_muestra_etiqueta_por_defecto(client):
-    response = client.get("/ajustes")
-    assert "Reserva confirmada" in response.text
-
-
-def test_post_ajustes_guarda_etiqueta(client):
-    data = dict(FORM_DATA, etiqueta_confirmada="Mesa ya confirmada")
+def test_post_ajustes_ignora_el_campo_etiqueta_legacy(client):
+    """Old callers (bookmarks/scripts) keep saving messaging settings; the
+    removed field is silently ignored."""
+    data = dict(FORM_DATA, etiqueta_confirmada="No persistir")
     response = client.post("/ajustes", data=data, follow_redirects=False)
     assert response.status_code == 303
     with client.app.state.sessionmaker() as session:
         config = session.get(Configuracion, 1)
-        assert config.etiqueta_confirmada == "Mesa ya confirmada"
-
-
-def test_post_ajustes_etiqueta_vacia_rechazada(client):
-    client.get("/ajustes")
-    data = dict(FORM_DATA, etiqueta_confirmada="")
-    response = client.post("/ajustes", data=data)
-    assert response.status_code == 200
-    with client.app.state.sessionmaker() as session:
-        config = session.get(Configuracion, 1)
+        assert config.plantilla_confirmacion == "conf_losco"
         assert config.etiqueta_confirmada == "Reserva confirmada"
 
 
@@ -507,7 +529,7 @@ def test_columna_etiqueta_migrada_en_db_con_esquema_viejo(tmp_path):
     app = create_app(_settings(tmp_path))
     with TestClient(app) as client:
         _cookie_login(client)
-        response = client.get("/ajustes")
+        response = client.get("/ajustes/tags")
         assert response.status_code == 200
         assert "Reserva confirmada" in response.text  # default after migration
 
@@ -875,8 +897,9 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
     with TestClient(app) as client:
         _cookie_login(client)
         response = client.post(
-            "/ajustes",
-            data=dict(FORM_DATA, etiqueta_confirmada="Confirmada nueva"),
+            "/ajustes/tags/confirmada",
+            data={"nombre": "Confirmada", "etiqueta_chatwoot": "Confirmada nueva",
+                  "envia_recordatorio": "on"},
             follow_redirects=False,
         )
         assert response.status_code == 200
@@ -888,8 +911,10 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
         assert "migrar-etiqueta" in text
 
         with client.app.state.sessionmaker() as session:
-            config = session.get(Configuracion, 1)
-            assert config.etiqueta_confirmada == "Confirmada nueva"
+            estado = session.scalars(
+                select(Estado).where(Estado.slug == "confirmada")
+            ).one()
+            assert estado.etiqueta_chatwoot == "Confirmada nueva"
 
 
 def test_post_ajustes_cambio_etiqueta_cero_contactos_redirige(tmp_path, monkeypatch):
@@ -905,22 +930,24 @@ def test_post_ajustes_cambio_etiqueta_cero_contactos_redirige(tmp_path, monkeypa
     with TestClient(app) as client:
         _cookie_login(client)
         response = client.post(
-            "/ajustes",
-            data=dict(FORM_DATA, etiqueta_confirmada="Otra etiqueta"),
+            "/ajustes/tags/confirmada",
+            data={"nombre": "Confirmada", "etiqueta_chatwoot": "Otra etiqueta",
+                  "envia_recordatorio": "on"},
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes"
+        assert response.headers["location"].startswith("/ajustes/tags")
 
 
-def test_post_ajustes_cambio_etiqueta_chatwoot_no_configurado_redirige(client):
+def test_post_tags_cambio_etiqueta_chatwoot_no_configurado_redirige(client):
     response = client.post(
-        "/ajustes",
-        data=dict(FORM_DATA, etiqueta_confirmada="Etiqueta X"),
+        "/ajustes/tags/confirmada",
+        data={"nombre": "Confirmada", "etiqueta_chatwoot": "Etiqueta X",
+              "envia_recordatorio": "on"},
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/ajustes"
+    assert response.headers["location"].startswith("/ajustes/tags")
 
 
 def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
@@ -946,18 +973,18 @@ def test_post_ajustes_migrar_etiqueta_realiza_migracion(tmp_path, monkeypatch):
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes?migrados_contactos=2&migrados_conv=3&fallas=0"
+        assert response.headers["location"] == "/ajustes/tags?migrados_contactos=2&migrados_conv=3&fallas=0"
         assert calls == [("Reserva confirmada", "Confirmada nueva")]
 
 
-def test_get_ajustes_muestra_banner_de_migracion(client):
-    response = client.get("/ajustes?migrados_contactos=2&migrados_conv=3&fallas=0")
+def test_get_ajustes_tags_muestra_banner_de_migracion(client):
+    response = client.get("/ajustes/tags?migrados_contactos=2&migrados_conv=3&fallas=0")
     assert response.status_code == 200
     assert "Migración lista: 2 contactos y 3 conversaciones actualizados" in response.text
 
 
-def test_get_ajustes_muestra_fallas_en_banner(client):
-    response = client.get("/ajustes?migrados_contactos=2&migrados_conv=3&fallas=1")
+def test_get_ajustes_tags_muestra_fallas_en_banner(client):
+    response = client.get("/ajustes/tags?migrados_contactos=2&migrados_conv=3&fallas=1")
     assert response.status_code == 200
     assert "Migración lista: 2 contactos y 3 conversaciones actualizados" in response.text
     assert "1 fallas" in response.text
@@ -973,7 +1000,7 @@ def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeyp
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes"
+        assert response.headers["location"].startswith("/ajustes/tags")
 
         response = client.post(
             "/ajustes/migrar-etiqueta",
@@ -981,7 +1008,7 @@ def test_post_ajustes_migrar_etiqueta_datos_invalidos_redirige(tmp_path, monkeyp
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"] == "/ajustes"
+        assert response.headers["location"].startswith("/ajustes/tags")
 
 
 # --- L26: guardar ajustes con el scheduler ACTIVO no debe crashear ---
@@ -999,3 +1026,86 @@ def test_post_ajustes_con_scheduler_activo_reprograma_sin_error(tmp_path):
         jobs = {job.id: job for job in app.state.scheduler.get_jobs()}
         assert str(jobs["confirmaciones_t48h"].trigger) == "cron[hour='10', minute='30']"
         assert str(jobs["recordatorio_invitados"].trigger) == "cron[hour='18', minute='45']"
+
+
+# --- S8 (calendario en raíz): settings de mensajes automatizados en el SPA ---
+
+
+def test_api_ajustes_requires_auth(anon_client):
+    assert anon_client.get("/api/ajustes").status_code == 401
+    assert anon_client.put("/api/ajustes", json={}).status_code == 401
+
+
+def test_api_ajustes_get_returns_messaging_config(client):
+    """T4: the label mapping left the messaging config (Tags page owns it)."""
+    body = client.get("/api/ajustes").json()
+    assert set(body) == {
+        "hora_confirmacion",
+        "hora_invitados",
+        "plantilla_confirmacion",
+        "plantilla_invitados",
+    }
+
+
+def test_api_ajustes_put_saves_and_returns_updated(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "08:30",
+            "hora_invitados": "17:45",
+            "plantilla_confirmacion": "conf_new",
+            "plantilla_invitados": "inv_new",
+            "etiqueta_confirmada": "Reserva OK",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["hora_confirmacion"] == "08:30"
+    body = client.get("/api/ajustes").json()
+    assert body["plantilla_invitados"] == "inv_new"
+    assert "etiqueta_confirmada" not in body
+
+
+def test_api_ajustes_put_invalid_hour_rejected_without_persist(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "25:99",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "conf",
+            "plantilla_invitados": "inv",
+        },
+    )
+    assert response.status_code == 422
+    assert client.get("/api/ajustes").json()["hora_confirmacion"] != "25:99"
+
+
+def test_api_ajustes_put_blank_template_rejected(client):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "09:00",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "",
+            "plantilla_invitados": "inv",
+            "etiqueta_confirmada": "Reserva confirmada",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_api_ajustes_put_ignora_etiqueta_vacia(client):
+    """T4: la etiqueta ya no es parte de la config de mensajería — el PUT
+    la ignora y guarda el resto."""
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "09:00",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "conf",
+            "plantilla_invitados": "inv",
+            "etiqueta_confirmada": "",
+        },
+    )
+    assert response.status_code == 200
+    body = client.get("/api/ajustes").json()
+    assert body["plantilla_confirmacion"] == "conf"

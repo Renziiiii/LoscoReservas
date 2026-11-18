@@ -30,6 +30,31 @@ class Configuracion(Base):
     etiqueta_confirmada: Mapped[str] = mapped_column(String(120), default="Reserva confirmada")
 
 
+class EstadoReserva(Base):
+    """Configured reservation states (S3, odd/tasks/tags-estados-sync.md).
+
+    Replaces the fixed `Estado = Literal[...]` of schemas.py as the single
+    source of truth for which `Reserva.estado` values exist. Each state may
+    map to a Chatwoot label (S4: `etiqueta_chatwoot`, None = no sync) and
+    declares `envia_recordatorio` (S4: generalized replacement for the old
+    hardcoded `estado != "cancelada"` of the reminder engine).
+
+    `nombre` is the display name; `slug` is the stored value of
+    `Reserva.estado` (immutable after creation). `es_base` marks the three
+    migration seeds, which the Tags panel does not allow to delete.
+    """
+
+    __tablename__ = "estados_reserva"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(60), unique=True)
+    slug: Mapped[str] = mapped_column(String(60), unique=True)
+    etiqueta_chatwoot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    envia_recordatorio: Mapped[bool] = mapped_column(Boolean, default=True)
+    es_base: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Reserva(Base):
     __tablename__ = "reservas"
 

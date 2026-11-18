@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     hora_invitados: str = "17:15"
     scheduler_enabled: bool = False
 
+    # --- Webhook de Chatwoot (T3, tags-estados-sync) ---
+    # Shared secret for the POST /api/webhooks/chatwoot endpoint (Chatwoot
+    # webhook subscription -> this app). Empty => endpoint always 404
+    # (fail closed: no token configured, no webhook).
+    chatwoot_webhook_token: str = ""
+
     # --- Iframe embebible en Chatwoot (T6, S4) ---
     # Shared secret in the iframe URL (the iframe cannot do cookie login).
     # Empty key => iframe always 403 (fail closed).

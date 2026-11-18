@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Losco — Tags{% endblock %}
+{% block topbar_actions %}{% endblock %}
+{% block content %}
+<div class="panel-layout">
+  <aside class="sidebar">
+    <p class="sidebar-title">Ajustes</p>
+    <nav aria-label="Secciones de ajustes">
+      <a class="sidebar-item" href="/ajustes">Mensajes automatizados</a>
+      <a class="sidebar-item active" href="/ajustes/tags" aria-current="page">Tags</a>
+    </nav>
+  </aside>
+  <div class="panel-content">
+<h1>Tags</h1>
+<p class="muted">Estados que puede tener una reserva y su etiqueta de Chatwoot. La etiqueta
+se aplica al contacto y a todos sus chats (actuales y futuros) cuando una reserva
+toma ese estado; al cambiar de estado la anterior se retira. Los tres estados
+base no se pueden eliminar.</p>
+
+{% if migrados_contactos is not none and migrados_conv is not none %}
+<div class="banner success">
+  Migración lista: {{ migrados_contactos }} contactos y {{ migrados_conv }} conversaciones actualizados
+  {% if fallas is not none and fallas > 0 %}({{ fallas }} fallas){% endif %}.
+</div>
+{% endif %}
+{% if error %}
+<div class="banner error">{{ error }}</div>
+{% endif %}
+
+{% for estado in estados %}
+<form method="post" action="/ajustes/tags/{{ estado.slug }}" class="card">
+  <h2>{{ estado.nombre }}{% if estado.es_base %} <span class="muted">(estado base)</span>{% endif %}</h2>
+  <input type="hidden" name="slug" value="{{ estado.slug }}">
+  <label>Nombre
+    <input type="text" name="nombre" required maxlength="60" value="{{ estado.nombre }}">
+  </label>
+  <label>Etiqueta de Chatwoot (vacío = no sincronizar)
+    <input type="text" name="etiqueta_chatwoot" maxlength="120" list="etiquetas-cuenta"
+      value="{{ estado.etiqueta_chatwoot or '' }}">
+  </label>
+  <label>
+    <input type="checkbox" name="envia_recordatorio" {% if estado.envia_recordatorio %}checked{% endif %}>
+    Enviar mensajes automáticos a las reservas de este estado
+  </label>
+  <button class="btn primary" type="submit">Guardar</button>
+  {% if not estado.es_base %}
+  <a class="btn danger" href="/ajustes/tags/{{ estado.slug }}/eliminar"
+     onclick="return confirm('¿Eliminar el estado {{ estado.nombre }}?')">Eliminar</a>
+  {% endif %}
+</form>
+{% endfor %}
+
+<form method="post" action="/ajustes/tags" class="card">
+  <h2>Nuevo estado</h2>
+  <label>Nombre
+    <input type="text" name="nombre" required maxlength="60" placeholder="Ej: Demorada">
+  </label>
+  <label>Etiqueta de Chatwoot (opcional)
+    <input type="text" name="etiqueta_chatwoot" maxlength="120" list="etiquetas-cuenta">
+  </label>
+  <label>
+    <input type="checkbox" name="envia_recordatorio" checked>
+    Enviar mensajes automáticos a las reservas de este estado
+  </label>
+  <button class="btn primary" type="submit">Crear estado</button>
+</form>
+<datalist id="etiquetas-cuenta"></datalist>
+<p id="etiquetas-tags-estado" class="muted">Cargando etiquetas de la cuenta…</p>
+<script>
+  fetch('/ajustes/etiquetas.json')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var estado = document.getElementById('etiquetas-tags-estado');
+      if (data.motivo) { estado.textContent = data.motivo; return; }
+      estado.textContent = data.etiquetas.length + ' etiquetas de la cuenta cargadas.';
+      var datalist = document.getElementById('etiquetas-cuenta');
+      data.etiquetas.forEach(function (e) {
+        var opt = document.createElement('option');
+        opt.value = e.title;
+        datalist.appendChild(opt);
+      });
+    })
+    .catch(function () {
+      document.getElementById('etiquetas-tags-estado').textContent =
+        'No se pudieron cargar las etiquetas: escribí el nombre a mano.';
+    });
+</script>
+  </div>
+</div>
+{% endblock %}

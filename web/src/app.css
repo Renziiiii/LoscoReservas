@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/*
+ * Orden de cascade a propósito: Tailwind (con su preflight) va PRIMERO.
+ * Los CSS de FullCalendar (skeleton + theme, importados desde App.svelte)
+ * cargan después y le ganan a preflight en igualdad de especificidad,
+ * así el calendario conserva su look de los demos.
+ *
+ * El badge de cupo vive acá (CSS plano, sin utilities de Tailwind) porque
+ * se inyecta como {html} dentro del DOM de FullCalendar y el scanner de
+ * Tailwind no lo ve. Usa las design tokens de Tailwind v4 (variables de
+ * tema --color-*, --text-*, --spacing, --font-weight-*) para no hardcodear
+ * valores: si se cambia el tema, el badge sigue al tema.
+ */
+
+.losco-cupo {
+  display: inline-block;
+  margin-top: calc(var(--spacing) * 0.5);
+  padding-inline: calc(var(--spacing) * 1.5);
+  padding-block: 1px;
+  border-radius: calc(infinity * 1px);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  font-weight: var(--font-weight-semibold);
+}
+.losco-cupo--ok {
+  background: color-mix(in oklab, var(--color-green-500) 15%, transparent);
+  color: var(--color-green-700);
+}
+.losco-cupo--aviso {
+  background: color-mix(in oklab, var(--color-amber-500) 15%, transparent);
+  color: var(--color-amber-700);
+}
+.losco-cupo--maximo {
+  background: color-mix(in oklab, var(--color-red-500) 15%, transparent);
+  color: var(--color-red-700);
+}

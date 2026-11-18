@@ -193,6 +193,34 @@ def test_iframe_json_returns_only_that_phones_reservas(tmp_path):
         assert data[0]["personas"] == 4
 
 
+def test_iframe_json_todas_devuelve_todo_el_calendario(tmp_path):
+    """L61: el calendario del iframe muestra TODAS las reservas (el agente
+    ve la disponibilidad), no sólo las del contacto."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        _create(client, nombre="Valen", telefono="+54 9 11 5555-1234")
+        _create(client, nombre="Otro", telefono="+54 9 11 4444-0000", personas=6)
+        response = client.get(
+            "/iframe/reservas.json",
+            params={"tel": "5491155551234", "todas": "1", "key": EMBED_KEY},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert {r["nombre"] for r in data} == {"Valen", "Otro"}
+
+
+def test_iframe_json_todas_wrong_key_returns_403(tmp_path):
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get(
+            "/iframe/reservas.json",
+            params={"tel": "5491155551234", "todas": "1", "key": "nope"},
+        )
+        assert response.status_code == 403
+
+
 def test_iframe_json_wrong_key_returns_403(tmp_path):
     app = create_app(_make_iframe_settings(tmp_path))
     with TestClient(app) as client:
