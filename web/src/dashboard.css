@@ -1,14 +1,25 @@
-/* Dashboard server-rendered (Jinja2 + HTMX): mismo vocabulario de tokens
- * que el SPA (tokens.css es la fuente única), utilities de Tailwind.
+/*
+ * Dashboard server-rendered (Jinja2 + HTMX): mismo vocabulario de tokens
+ * que el SPA (tokens.css es la fuente unica), utilities de Tailwind.
  *
- * Se compila con @tailwindcss/cli (npm run build:dashboard) escaneando
- * app/templates/**/*.html, y el artifact queda en app/static/styles.css
+ * Se compila con @tailwindcss/cli (npm run build:dashboard) escaneando las
+ * plantillas del dashboard, y el artifact queda en app/static/styles.css
  * (comprometido para que la imagen Python no necesite Node; el Dockerfile
  * lo regenera en el stage webbuild).
  *
- * Los nombres de clase viejos (.btn, .card, .banner, .sidebar-item…) se
+ * Los nombres de clase viejos (.btn, .card, .banner, .sidebar-item...) se
  * migraron a utilities en las plantillas: este archivo solo importa el
- * motor + los tokens. Cualquier CSS "especial" del dashboard va acá abajo,
- * con los roles de tokens.css, nunca colores crudos. */
+ * motor + los tokens. Cualquier CSS especial del dashboard va aqui abajo,
+ * con los roles de tokens.css, nunca colores crudos.
+ *
+ * ATENCION con los comentarios de este archivo: CSS solo soporta block
+ * comments y cualquier secuencia asterisco-barra adentro (p. ej. un glob
+ * de dos asteriscos) cierra el comentario antes de tiempo y rompe el
+ * parseo de los @import. No escribir globs ni "//" en comentarios aqui.
+ */
 @import "tailwindcss";
 @import "./tokens.css";
+
+/* Fuentes de clases: las plantillas del dashboard. Va en el CSS y no como
+   argumento del script porque npm corre con sh, que no expande globs. */
+@source "../../app/templates";
