@@ -52,7 +52,6 @@ h1 { font-size: 1.25rem; font-weight: 600; }
 .brand-logo {
   width: 28px; height: 28px; border-radius: 6px; display: block;
 }
-.brand-sub { font-size: .875rem; color: var(--muted); }
 .spacer { flex: 1; }
 .topbar .btn { align-self: center; }
 
