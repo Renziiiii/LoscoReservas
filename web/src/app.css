@@ -1,4 +1,12 @@
 @import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--fg);
+  }
+}
 
 /*
  * Orden de cascade a propósito: Tailwind (con su preflight) va PRIMERO.
@@ -8,9 +16,8 @@
  *
  * El badge de cupo vive acá (CSS plano, sin utilities de Tailwind) porque
  * se inyecta como {html} dentro del DOM de FullCalendar y el scanner de
- * Tailwind no lo ve. Usa las design tokens de Tailwind v4 (variables de
- * tema --color-*, --text-*, --spacing, --font-weight-*) para no hardcodear
- * valores: si se cambia el tema, el badge sigue al tema.
+ * Tailwind no lo ve. Usa los roles semánticos de tokens.css: si cambia el
+ * tema o el modo, el badge sigue a los tokens.
  */
 
 .losco-cupo {
@@ -24,14 +31,27 @@
   font-weight: var(--font-weight-semibold);
 }
 .losco-cupo--ok {
-  background: color-mix(in oklab, var(--color-green-500) 15%, transparent);
-  color: var(--color-green-700);
+  background: var(--ok-surface);
+  color: var(--ok-text);
 }
 .losco-cupo--aviso {
-  background: color-mix(in oklab, var(--color-amber-500) 15%, transparent);
-  color: var(--color-amber-700);
+  background: var(--warning-surface);
+  color: var(--warning-text);
 }
 .losco-cupo--maximo {
-  background: color-mix(in oklab, var(--color-red-500) 15%, transparent);
-  color: var(--color-red-700);
+  background: var(--danger-surface);
+  color: var(--danger-text);
+}
+
+/* Dark mode de FullCalendar: el tema forma define sus colores en
+ * variables --fc-* sobre .fc; las re-mapeamos a nuestros roles bajo
+ * .dark (los componentes del calendario no cambian). */
+.dark .fc {
+  color: var(--fg);
+  --fc-page-bg-color: transparent;
+  --fc-border-color: var(--line);
+  --fc-neutral-bg-color: var(--surface-hover);
+  --fc-today-bg-color: color-mix(in oklab, var(--brand) 12%, transparent);
+  --fc-list-event-hover-bg-color: var(--surface-hover);
+  --fc-highlight-color: color-mix(in oklab, var(--brand) 20%, transparent);
 }

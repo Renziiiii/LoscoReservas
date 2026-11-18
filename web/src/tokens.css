@@ -1,0 +1,146 @@
+/*
+ * Design tokens semánticos — FUENTE ÚNICA compartida por el SPA
+ * (web/src/app.css) y el dashboard server-rendered (web/src/dashboard.css),
+ * con la filosofía de Chatwoot (theme/colors.js + _next-colors.scss):
+ *
+ * - Los componentes NUNCA consumen colores crudos (zinc-300, blue-600…):
+ *   consumen roles — brand, surface, line, muted, danger, ok, warning —
+ *   definidos una sola vez acá.
+ * - Un solo color institucional: --brand-rgb (blue-600 #2563eb).
+ * - Dark mode por clase (como Chatwoot darkMode: 'class'): las MISMAS
+ *   variables cambian de valor bajo `.dark` en <html>; los componentes no
+ *   tienen variantes dark propias. El default sigue prefers-color-scheme:
+ *   el init inline en index.html/iframe.html/base.html pone la clase antes
+ *   del CSS (sin FOUC).
+ *
+ * Patrón Tailwind v4 (el mismo de shadcn): los roles viven en :root/.dark
+ * como variables con nombre propio, y `@theme inline` los expone como
+ * tokens de tema (--color-*) SIN copiar el valor: las utilities referencian
+ * la variable, así el override de .dark llega a todo lo ya renderizado.
+ *
+ * Este archivo se compila dos veces (una por entrypoint), pero los valores
+ * viven solo acá: cambiar la paleta es editar este archivo y recompilar.
+ */
+
+/* Variante `dark` basada en clase (Tailwind v4 la trae como media query). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* --- primitivos (formato RGB crudo, como Chatwoot) ---
+   * Escala zinc de Tailwind y la brand fija #2563eb (blue-600). Los
+   * componentes no las usan directo: alimentan los roles de abajo. */
+  --white: 255 255 255;
+  --brand-rgb: 37 99 235; /* #2563eb — ÚNICO color institucional (S2) */
+  --brand-hover-rgb: 29 78 216; /* blue-700 */
+  --brand-dark-rgb: 59 130 246; /* blue-500 */
+  --brand-dark-hover-rgb: 96 165 250; /* blue-400 */
+  --zinc-50: 250 250 250;
+  --zinc-100: 244 244 245;
+  --zinc-200: 228 228 231;
+  --zinc-300: 212 212 216;
+  --zinc-400: 161 161 170;
+  --zinc-500: 113 113 122;
+  --zinc-600: 82 82 91;
+  --zinc-700: 63 63 70;
+  --zinc-800: 39 39 42;
+  --zinc-900: 24 24 27;
+  --zinc-950: 9 9 11;
+
+  /* --- roles semánticos (tema claro) --- */
+  --background: rgb(var(--zinc-50));
+  --surface: rgb(var(--white));
+  --surface-hover: rgb(var(--zinc-50));
+  --surface-active: rgb(var(--zinc-100));
+  --line-weak: rgb(var(--zinc-100));
+  --line: rgb(var(--zinc-200));
+  --line-strong: rgb(var(--zinc-300));
+  --fg: rgb(var(--zinc-900));
+  --muted: rgb(var(--zinc-500));
+  --faint: rgb(var(--zinc-400));
+  --brand: rgb(var(--brand-rgb));
+  --brand-hover: rgb(var(--brand-hover-rgb));
+  --brand-soft: color-mix(in oklab, rgb(var(--brand-rgb)) 10%, rgb(var(--white)));
+  --brand-text: color-mix(in oklab, rgb(var(--brand-rgb)) 80%, black);
+  --on-brand: rgb(var(--white));
+  --danger: rgb(220 38 38); /* red-600 */
+  --danger-hover: rgb(185 28 28); /* red-700 */
+  --danger-soft: rgb(254 226 226); /* red-100 */
+  --danger-surface: rgb(254 242 242); /* red-50 */
+  --danger-text: rgb(153 27 27); /* red-800 */
+  --ok: rgb(13 148 136); /* teal-600 */
+  --ok-surface: rgb(240 253 250); /* teal-50 */
+  --ok-text: rgb(17 94 89); /* teal-800 */
+  --warning: rgb(217 119 6); /* amber-600 */
+  --warning-surface: rgb(255 251 235); /* amber-50 */
+  --warning-text: rgb(180 83 9); /* amber-700 */
+}
+
+.dark {
+  /* --- roles semánticos (tema oscuro): superficies invertidas de a
+   * poco, texto claro, brand más clara para contraste sobre fondo
+   * oscuro (misma idea que las escalas dark de Chatwoot). --- */
+  --background: rgb(var(--zinc-950));
+  --surface: rgb(var(--zinc-900));
+  --surface-hover: rgb(var(--zinc-800));
+  --surface-active: rgb(var(--zinc-700));
+  --line-weak: rgb(var(--zinc-800));
+  --line: rgb(var(--zinc-700));
+  --line-strong: rgb(var(--zinc-600));
+  --fg: rgb(var(--zinc-50));
+  --muted: rgb(var(--zinc-400));
+  --faint: rgb(var(--zinc-500));
+  --brand: rgb(var(--brand-dark-rgb));
+  --brand-hover: rgb(var(--brand-dark-hover-rgb));
+  --brand-soft: color-mix(in oklab, rgb(var(--brand-dark-rgb)) 16%, rgb(var(--zinc-900)));
+  --brand-text: rgb(147 197 253); /* blue-300 */
+  --on-brand: rgb(var(--white));
+  --danger: rgb(239 68 68); /* red-500 */
+  --danger-hover: rgb(248 113 113); /* red-400 */
+  --danger-soft: color-mix(in oklab, rgb(239 68 68) 20%, rgb(var(--zinc-900)));
+  --danger-surface: color-mix(in oklab, rgb(239 68 68) 12%, rgb(var(--zinc-900)));
+  --danger-text: rgb(252 165 165); /* red-300 */
+  --ok: rgb(45 212 191); /* teal-400 */
+  --ok-surface: color-mix(in oklab, rgb(45 212 191) 12%, rgb(var(--zinc-900)));
+  --ok-text: rgb(153 246 228); /* teal-200 */
+  --warning: rgb(251 191 36); /* amber-400 */
+  --warning-surface: color-mix(in oklab, rgb(251 191 36) 12%, rgb(var(--zinc-900)));
+  --warning-text: rgb(252 211 77); /* amber-300 */
+}
+
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+/* --- exposición a Tailwind (genera bg-surface, border-line-strong,
+ * text-muted, bg-brand, text-danger-text, bg-ok-surface, etc.) --- */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+  --color-line-weak: var(--line-weak);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-on-brand: var(--on-brand);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-surface: var(--danger-surface);
+  --color-danger-text: var(--danger-text);
+  --color-ok: var(--ok);
+  --color-ok-surface: var(--ok-surface);
+  --color-ok-text: var(--ok-text);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-text: var(--warning-text);
+}

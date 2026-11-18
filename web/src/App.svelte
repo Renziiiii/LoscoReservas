@@ -278,22 +278,22 @@
 <!-- L14: layout de alto fijo — header + leyenda fijos, el resto scrollea
 por dentro de cada columna; nada se sale del viewport. -->
 <div class="flex h-screen flex-col overflow-hidden">
-<header class="flex items-baseline gap-3 px-5 py-3 border-b border-zinc-200">
+<header class="flex items-baseline gap-3 px-5 py-3 border-b border-line">
   <span class="text-xl font-semibold tracking-wide">Losco</span>
-  <span class="text-sm text-zinc-500">Reservas</span>
-  <span class="ml-auto text-xs font-medium rounded-full px-2.5 py-1 bg-blue-50 text-blue-700">{fuente}</span>
+  <span class="text-sm text-muted">Reservas</span>
+  <span class="ml-auto text-xs font-medium rounded-full px-2.5 py-1 bg-brand-soft text-brand-text">{fuente}</span>
 </header>
 
-<div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 border-b border-zinc-100">
+<div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 border-b border-line-weak">
   {#each leyenda as estado}
-    <span class="inline-flex items-center gap-1.5 text-xs text-zinc-600">
+    <span class="inline-flex items-center gap-1.5 text-xs text-muted">
       <i class="w-3 h-3 rounded-sm inline-block" style="background: {estiloEstado(estado).bg}"></i>{estiloEstado(estado).label}
     </span>
   {/each}
 </div>
 
 <main class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 lg:flex-row lg:overflow-hidden">
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface p-2 shadow-sm">
     <CalendarioReservas
     {reservas}
     estados={leyenda}
@@ -313,20 +313,20 @@ por dentro de cada columna; nada se sale del viewport. -->
   <aside class="flex w-full shrink-0 flex-col gap-4 lg:w-80 lg:overflow-y-auto">
     {#if toast}
       <div
-        class="rounded-lg px-3 py-2 text-sm {toast.tipo === 'ok' ? 'text-teal-800 bg-teal-50' : 'text-red-800 bg-red-50'}"
+        class="rounded-lg px-3 py-2 text-sm {toast.tipo === 'ok' ? 'text-ok-text bg-ok-surface' : 'text-danger-text bg-danger-surface'}"
         role="status"
       >{toast.texto}</div>
     {/if}
 
     {#if draft}
-      <div class="rounded-xl border border-zinc-200 p-4 shadow-sm bg-white">
+      <div class="rounded-xl border border-line p-4 shadow-sm bg-surface">
         <div class="flex items-baseline justify-between gap-2">
           <h3 class="text-base font-semibold">
             {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
           </h3>
           <button
             type="button"
-            class="text-xs rounded px-2 py-0.5 border border-zinc-300 hover:bg-zinc-50"
+            class="text-xs rounded px-2 py-0.5 border border-line-strong hover:bg-surface-hover text-muted"
             onclick={cerrar}
           >Cerrar</button>
         </div>
@@ -335,13 +335,13 @@ por dentro de cada columna; nada se sale del viewport. -->
           onsubmit={(e) => { e.preventDefault(); guardar(); }}
         >
           <label class="col-span-2 flex flex-col gap-1">
-            <span class="text-zinc-500">Nombre</span>
-            <input class="rounded border border-zinc-300 px-2 py-1" type="text" bind:value={draft.nombre} required />
+            <span class="text-muted">Nombre</span>
+            <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="text" bind:value={draft.nombre} required />
           </label>
           <label class="col-span-2 flex flex-col gap-1">
-            <span class="text-zinc-500">Teléfono (ej: 5491234567890)</span>
+            <span class="text-muted">Teléfono (ej: 5491234567890)</span>
             <input
-              class="rounded border border-zinc-300 px-2 py-1 font-mono"
+              class="rounded border border-line-strong bg-surface text-fg px-2 py-1 font-mono"
               type="text"
               bind:value={draft.telefono}
               disabled={modo === "editar"}
@@ -349,29 +349,29 @@ por dentro de cada columna; nada se sale del viewport. -->
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-zinc-500">Fecha</span>
-            <input class="rounded border border-zinc-300 px-2 py-1" type="date" bind:value={draft.fecha} required />
+            <span class="text-muted">Fecha</span>
+            <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="date" bind:value={draft.fecha} required />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-zinc-500">Hora</span>
-            <input class="rounded border border-zinc-300 px-2 py-1" type="time" bind:value={draft.hora} required />
+            <span class="text-muted">Hora</span>
+            <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="time" bind:value={draft.hora} required />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-zinc-500">Personas</span>
-            <input class="rounded border border-zinc-300 px-2 py-1" type="number" min="1" max="200" bind:value={draft.personas} required />
+            <span class="text-muted">Personas</span>
+            <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="number" min="1" max="200" bind:value={draft.personas} required />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-zinc-500">Estado</span>
-            <select class="rounded border border-zinc-300 px-2 py-1" bind:value={draft.estado}>
+            <span class="text-muted">Estado</span>
+            <select class="rounded border border-line-strong bg-surface text-fg px-2 py-1" bind:value={draft.estado}>
               {#each leyenda as e}
                 <option value={e}>{nombreDeEstado(e)}</option>
               {/each}
             </select>
           </label>
           <label class="col-span-2 flex flex-col gap-1">
-            <span class="text-zinc-500">Detalles</span>
+            <span class="text-muted">Detalles</span>
             <input
-              class="rounded border border-zinc-300 px-2 py-1"
+              class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
               type="text"
               bind:value={draft.detalles}
               placeholder="ej. cumpleaños, mesa cerca de la ventana…"
@@ -379,18 +379,18 @@ por dentro de cada columna; nada se sale del viewport. -->
           </label>
           <label class="col-span-2 flex items-center gap-2">
             <input type="checkbox" bind:checked={draft.enviar_recordatorio} />
-            <span class="text-zinc-500">Enviar recordatorio por WhatsApp</span>
+            <span class="text-muted">Enviar recordatorio por WhatsApp</span>
           </label>
           <div class="col-span-2 flex gap-2">
             <button
               type="submit"
-              class="flex-1 rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              class="flex-1 rounded bg-brand px-3 py-1.5 font-medium text-on-brand hover:bg-brand-hover disabled:opacity-50"
               disabled={guardando}
             >{guardando ? "Guardando…" : modo === "crear" ? "Crear reserva" : "Guardar"}</button>
             {#if modo === "editar"}
               <button
                 type="button"
-                class="rounded border px-3 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}"
+                class="rounded border px-3 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar ? 'border-danger bg-danger text-on-brand' : 'border-danger-soft bg-danger-surface text-danger-text hover:bg-danger-soft'}"
                 onclick={eliminar}
                 disabled={guardando}
               >{confirmandoEliminar ? "¿Seguro? Click de nuevo" : "Eliminar"}</button>
@@ -400,13 +400,13 @@ por dentro de cada columna; nada se sale del viewport. -->
         {#if modo === "editar" && seleccionada}
           <button
             type="button"
-            class="mt-2 w-full rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+            class="mt-2 w-full rounded border border-line-strong bg-surface text-fg px-3 py-1.5 text-sm font-medium hover:bg-surface-hover"
             onclick={() => abrirChat(seleccionada!)}
           >Abrir chat en Chatwoot</button>
         {/if}
       </div>
     {:else}
-      <p class="text-sm text-zinc-400 italic px-1">
+      <p class="text-sm text-faint italic px-1">
         Click en un evento para editarlo · click en un día para crear una reserva.
       </p>
     {/if}
@@ -417,11 +417,11 @@ por dentro de cada columna; nada se sale del viewport. -->
 <!-- S8 (L10): icono de engranaje, lado izquierdo abajo → /settings -->
 <a
   href="/settings"
-  class="fixed bottom-4 left-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-md hover:bg-zinc-50 active:bg-zinc-100"
+  class="fixed bottom-4 left-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface shadow-md hover:bg-surface-hover active:bg-surface-active"
   title="Configuración"
   aria-label="Configuración"
 >
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 text-zinc-600">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 text-muted">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
