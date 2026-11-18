@@ -350,7 +350,7 @@
         color: propia ? c.bg : atenuarColor(c.bg),
         backgroundColor: propia ? c.bg : atenuarColor(c.bg),
         borderColor: propia ? c.border : atenuarColor(c.border, 0.75),
-        classNames: propia ? ["ring-2 ring-blue-400 shadow-md"] : [],
+        classNames: propia ? ["ring-2 ring-brand shadow-md"] : [],
         extendedProps: { reserva: r },
       };
     });
@@ -383,7 +383,7 @@
 <div class="flex h-full flex-col overflow-hidden">
 {#if toast}
   <div
-    class="px-3 py-1.5 text-xs {toast.tipo === 'ok' ? 'text-teal-800 bg-teal-50' : 'text-red-800 bg-red-50'}"
+    class="px-3 py-1.5 text-xs {toast.tipo === 'ok' ? 'text-ok-text bg-ok-surface' : 'text-danger-text bg-danger-surface'}"
     role="status"
     transition:fade
   >{toast.texto}</div>
@@ -393,7 +393,7 @@
   <!-- L15: sin padding ni márgenes — flush contra el borde del iframe
   (mismo criterio que el calendario, L65); los inputs llevan su propio
   padding interno. -->
-  <div class="border-y border-zinc-200 bg-white">
+  <div class="border-y border-line bg-surface">
     <div class="flex items-baseline justify-between gap-2">
       <h3 class="text-sm font-semibold">
         {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
@@ -401,7 +401,7 @@
       </h3>
       <button
         type="button"
-        class="text-xs rounded px-2 py-0.5 border border-zinc-300 hover:bg-zinc-50"
+        class="text-xs rounded px-2 py-0.5 border border-line-strong hover:bg-surface-hover text-muted"
         onclick={cerrar}
       >Cerrar</button>
     </div>
@@ -410,26 +410,26 @@
       onsubmit={(e) => { e.preventDefault(); guardar(); }}
     >
       <label class="col-span-2 flex flex-col gap-0.5">
-        <span class="text-zinc-500">Nombre</span>
+        <span class="text-muted">Nombre</span>
         <input
-          class="rounded border border-zinc-300 px-2 py-1"
+          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
           type="text"
           bind:value={draft.nombre}
           required
         />
       </label>
       <label class="flex flex-col gap-0.5">
-        <span class="text-zinc-500">Fecha</span>
-        <input class="rounded border border-zinc-300 px-2 py-1" type="date" bind:value={draft.fecha} required />
+        <span class="text-muted">Fecha</span>
+        <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="date" bind:value={draft.fecha} required />
       </label>
       <label class="flex flex-col gap-0.5">
-        <span class="text-zinc-500">Hora</span>
-        <input class="rounded border border-zinc-300 px-2 py-1" type="time" bind:value={draft.hora} required />
+        <span class="text-muted">Hora</span>
+        <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="time" bind:value={draft.hora} required />
       </label>
       <label class="flex flex-col gap-0.5">
-        <span class="text-zinc-500">Personas</span>
+        <span class="text-muted">Personas</span>
         <input
-          class="rounded border border-zinc-300 px-2 py-1"
+          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
           type="number"
           min="1"
           max="200"
@@ -438,17 +438,17 @@
         />
       </label>
       <label class="flex flex-col gap-0.5">
-        <span class="text-zinc-500">Estado</span>
-        <select class="rounded border border-zinc-300 px-2 py-1" bind:value={draft.estado}>
+        <span class="text-muted">Estado</span>
+        <select class="rounded border border-line-strong bg-surface text-fg px-2 py-1" bind:value={draft.estado}>
           {#each listaEstados as e}
             <option value={e}>{nombreDeEstado(e)}</option>
           {/each}
         </select>
       </label>
       <label class="col-span-2 flex flex-col gap-0.5">
-        <span class="text-zinc-500">Detalles</span>
+        <span class="text-muted">Detalles</span>
         <input
-          class="rounded border border-zinc-300 px-2 py-1"
+          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
           type="text"
           bind:value={draft.detalles}
           placeholder="ej. cumpleaños, mesa cerca de la ventana…"
@@ -456,18 +456,18 @@
       </label>
       <label class="col-span-2 flex items-center gap-2">
         <input type="checkbox" bind:checked={draft.enviar_recordatorio} />
-        <span class="text-zinc-500">Enviar recordatorio por WhatsApp</span>
+        <span class="text-muted">Enviar recordatorio por WhatsApp</span>
       </label>
       <div class="col-span-2 flex gap-2">
         <button
           type="submit"
-          class="flex-1 rounded bg-blue-600 px-2 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="flex-1 rounded bg-brand px-2 py-1.5 font-medium text-on-brand hover:bg-brand-hover disabled:opacity-50"
           disabled={guardando}
         >{guardando ? "Guardando…" : modo === "crear" ? "Crear reserva" : "Guardar"}</button>
         {#if modo === "editar"}
           <button
             type="button"
-            class="rounded border px-2 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}"
+            class="rounded border px-2 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar ? 'border-danger bg-danger text-on-brand' : 'border-danger-soft bg-danger-surface text-danger-text hover:bg-danger-soft'}"
             onclick={eliminar}
             disabled={guardando}
           >{confirmandoEliminar ? "¿Seguro? Click de nuevo" : "Eliminar"}</button>

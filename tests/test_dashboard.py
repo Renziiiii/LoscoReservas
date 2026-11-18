@@ -5,6 +5,8 @@ Browser flows use the session cookie set by POST /login; the bearer-token
 `client` also works because get_current_user accepts both.
 """
 
+import re
+
 import pytest
 
 
@@ -96,7 +98,10 @@ def test_create_via_form_redirects_and_persists(browser, client):
 def test_create_via_form_with_validation_error_rerenders_and_stores_nothing(browser, client):
     response = browser.post("/reservas", data={**VALID_FORM, "nombre": ""})
     assert response.status_code == 200
-    assert "error" in response.text.lower()
+    # design-tokens S5: la migración a Tailwind quitó la clase .error —
+    # el error se pinta con tokens (bg-danger-surface). La assertion mira
+    # la forma del error (campo: mensaje), no el nombre de la clase.
+    assert "nombre:" in response.text.lower()
     assert client.get("/api/reservas").json() == []
 
 
@@ -137,7 +142,9 @@ def test_brand_logo_links_back_home(browser):
     Jinja page (e.g. /nuevo) can navigate back; it shows the logo + 'Losco'."""
     response = browser.get("/nuevo")
     assert response.status_code == 200
-    assert '<a class="brand" href="/"><img class="brand-logo" src="/static/LoscoLogo.jpg" alt="Losco">Losco</a>' in response.text
+    # design-tokens S5: clases migradas a utilities de Tailwind; lo que
+    # importa es el comportamiento: link a / con logo + 'Losco'.
+    assert re.search(r'<a [^>]*href="/"[^>]*><img [^>]*src="/static/LoscoLogo.jpg"[^>]*alt="Losco">Losco</a>', response.text)
 
 
 def test_settings_redirects_to_ajustes(browser):

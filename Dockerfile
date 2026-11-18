@@ -10,6 +10,9 @@ RUN npm ci
 COPY web/ ./
 # Build straight into the app static dir layout (base=/static/calendar/).
 RUN npm run build -- --outDir /web-dist
+# Dashboard stylesheet: Tailwind CLI over app/templates → app/static/styles.css
+# (same tokens as the SPA, web/src/tokens.css is the single source).
+RUN npm run build:dashboard
 
 FROM python:3.12-slim
 

@@ -2,70 +2,74 @@
 {% block title %}Losco — Tags{% endblock %}
 {% block topbar_actions %}{% endblock %}
 {% block content %}
-<div class="panel-layout">
-  <aside class="sidebar">
-    <p class="sidebar-title">Ajustes</p>
-    <nav aria-label="Secciones de ajustes">
-      <a class="sidebar-item" href="/ajustes">Mensajes automatizados</a>
-      <a class="sidebar-item active" href="/ajustes/tags" aria-current="page">Tags</a>
+<div class="flex flex-col items-start gap-3 md:flex-row md:gap-6">
+  <aside class="w-full border-b border-line pb-2 md:w-56 md:shrink-0 md:border-b-0 md:border-r md:pr-4">
+    <p class="pb-2 text-xs font-medium uppercase tracking-wider text-faint">Ajustes</p>
+    <nav aria-label="Secciones de ajustes" class="md:block">
+      <a class="mb-0.5 block rounded-lg px-2.5 py-2 text-sm font-medium text-muted no-underline hover:bg-surface-hover hover:text-fg" href="/ajustes">Mensajes automatizados</a>
+      <a class="mb-0.5 block rounded-lg bg-brand-soft px-2.5 py-2 text-sm font-medium text-brand-text no-underline hover:bg-surface-hover hover:text-fg" href="/ajustes/tags" aria-current="page">Tags</a>
     </nav>
   </aside>
-  <div class="panel-content">
-<h1>Tags</h1>
-<p class="muted">Estados que puede tener una reserva y su etiqueta de Chatwoot. La etiqueta
+  <div class="min-w-0 flex-1 md:max-w-[760px]">
+<h1 class="mb-2 text-xl font-semibold">Tags</h1>
+<p class="mb-2 text-sm text-muted">Estados que puede tener una reserva y su etiqueta de Chatwoot. La etiqueta
 se aplica al contacto y a todos sus chats (actuales y futuros) cuando una reserva
 toma ese estado; al cambiar de estado la anterior se retira. El guardado es uno
 solo: editá todas las tarjetas y apretá Guardar al final.</p>
 
 {% if migrados_contactos is not none and migrados_conv is not none %}
-<div class="banner success">
+<div class="mb-3.5 rounded-lg bg-ok-surface px-3.5 py-2.5 text-sm text-ok-text">
   Migración lista: {{ migrados_contactos }} contactos y {{ migrados_conv }} conversaciones actualizados
   {% if fallas is not none and fallas > 0 %}({{ fallas }} fallas){% endif %}.
 </div>
 {% endif %}
 {% if error %}
-<div class="banner error">{{ error }}</div>
+<div class="mb-3.5 rounded-lg bg-danger-surface px-3.5 py-2.5 text-sm text-danger-text">{{ error }}</div>
 {% endif %}
 
 {# S3 (tags-panel-v2): UN solo form con todas las tarjetas y UN botón Guardar
    al final. S5: los estados base son solo un template — todas las tarjetas
    tienen Eliminar. S7: Nombre y Etiqueta comparten fila. #}
-<form method="post" action="/ajustes/tags/guardar" class="card">
+<form method="post" action="/ajustes/tags/guardar" class="rounded-xl border border-line bg-surface p-5 shadow-sm">
   {% for estado in estados %}
-  <fieldset class="tag-card">
-    <h2>{{ estado.nombre }}{% if estado.es_base %} <span class="muted">(base)</span>{% endif %}</h2>
-    <div class="tag-row">
-      <label>Nombre
-        <input type="text" name="nombre_{{ estado.slug }}" required maxlength="60" value="{{ estado.nombre }}">
+  <fieldset class="mb-3.5 rounded-lg border border-line p-3.5">
+    <h2 class="mb-2 text-base font-semibold">{{ estado.nombre }}{% if estado.es_base %} <span class="text-sm font-normal text-muted">(base)</span>{% endif %}</h2>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="flex flex-col gap-1 text-sm text-muted">Nombre
+        <input type="text" name="nombre_{{ estado.slug }}" required maxlength="60"
+          class="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand"
+          value="{{ estado.nombre }}">
       </label>
-      <label>Etiqueta de Chatwoot (vacío = no sincronizar)
-        <select name="etiqueta_{{ estado.slug }}" class="sel-etiqueta" data-valor="{{ estado.etiqueta_chatwoot or '' }}"></select>
+      <label class="flex flex-col gap-1 text-sm text-muted">Etiqueta de Chatwoot (vacío = no sincronizar)
+        <select name="etiqueta_{{ estado.slug }}" class="sel-etiqueta rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand" data-valor="{{ estado.etiqueta_chatwoot or '' }}"></select>
       </label>
     </div>
-    <button class="btn danger" type="submit"
+    <button class="mt-3 inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-danger hover:bg-surface-hover" type="submit"
       formaction="/ajustes/tags/{{ estado.slug }}/eliminar" formmethod="post"
       onclick="return confirm('¿Eliminar el estado {{ estado.nombre }}?')">Eliminar</button>
   </fieldset>
   {% endfor %}
 
   <template id="tpl-nuevo-estado">
-    <fieldset class="tag-card nuevo">
-      <h2 class="muted">Nuevo estado</h2>
-      <div class="tag-row">
-        <label>Nombre
-          <input type="text" name="nuevo_nombre" maxlength="60" placeholder="Ej: Demorada">
+    <fieldset class="mb-3.5 rounded-lg border border-line p-3.5">
+      <h2 class="mb-2 text-base font-semibold text-muted">Nuevo estado</h2>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="flex flex-col gap-1 text-sm text-muted">Nombre
+          <input type="text" name="nuevo_nombre" maxlength="60"
+            class="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand"
+            placeholder="Ej: Demorada">
         </label>
-        <label>Etiqueta de Chatwoot
-          <select name="nuevo_etiqueta" class="sel-etiqueta nuevo" data-valor=""></select>
+        <label class="flex flex-col gap-1 text-sm text-muted">Etiqueta de Chatwoot
+          <select name="nuevo_etiqueta" class="sel-etiqueta nuevo rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand" data-valor=""></select>
         </label>
       </div>
-      <button class="btn" type="button" onclick="this.closest('fieldset').remove()">Quitar</button>
+      <button class="mt-3 inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-fg hover:bg-surface-hover" type="button" onclick="this.closest('fieldset').remove()">Quitar</button>
     </fieldset>
   </template>
-  <button class="btn" type="button" id="agregar-estado">+ Nuevo estado</button>
+  <button class="mb-3.5 inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-fg hover:bg-surface-hover" type="button" id="agregar-estado">+ Nuevo estado</button>
 
-  <p id="etiquetas-tags-estado" class="muted">Cargando etiquetas de la cuenta…</p>
-  <button class="btn primary" type="submit">Guardar</button>
+  <p id="etiquetas-tags-estado" class="mb-3 text-sm text-muted">Cargando etiquetas de la cuenta…</p>
+  <button class="inline-flex cursor-pointer items-center rounded-lg bg-brand px-3.5 py-1.5 font-medium text-on-brand hover:bg-brand-hover" type="submit">Guardar</button>
 </form>
 <script>
   var OPCION_VACIA = '(vacío = no sincronizar)';
@@ -97,6 +101,7 @@ solo: editá todas las tarjetas y apretá Guardar al final.</p>
     input.maxLength = 120;
     input.value = select.dataset.valor || '';
     input.placeholder = 'Escribí el nombre de la etiqueta a mano';
+    input.className = select.className;
     select.replaceWith(input);
   }
 

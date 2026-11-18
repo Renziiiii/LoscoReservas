@@ -55,6 +55,13 @@ dentro de Chatwoot (que sirve WhatsApp, Instagram y Messenger).
 - **Docker** — un solo contenedor liviano, un worker (SQLite serializa
   escrituras igual).
 - **APScheduler** — scheduler in-process, sin servicio extra.
+- **Tailwind v4 con design tokens semánticos** — filosofía Chatwoot: los
+  componentes nunca usan colores crudos, consumen roles (`brand`, `surface`,
+  `line`, `muted`, `danger`…) definidos una sola vez en `web/src/tokens.css`
+  (fuente única del SPA y del dashboard), con dark mode por clase
+  (`.dark`, default según `prefers-color-scheme`). El stylesheet del
+  dashboard (`app/static/styles.css`) es un build artifact: regenerarlo con
+  `npm run build:dashboard` (en `web/`) tras tocar tokens o plantillas.
 
 ## Desarrollo local
 

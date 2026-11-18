@@ -5,20 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Losco — Reservas{% endblock %}</title>
   <link rel="icon" type="image/jpeg" href="/static/LoscoLogo.jpg">
+  {# Tema class-based (tokens.css, filosofía Chatwoot): el default sigue
+     prefers-color-scheme. Inline antes del CSS para evitar FOUC — mismo
+     patrón que el SPA (web/index.html). #}
+  <script>
+    if (matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 </head>
-<body>
-  <nav class="topbar">
-    <a class="brand" href="/"><img class="brand-logo" src="/static/LoscoLogo.jpg" alt="Losco">Losco</a>
-    <span class="spacer"></span>
+<body class="min-h-screen bg-background text-fg antialiased">
+  <nav class="sticky top-0 z-10 flex items-baseline gap-3 border-b border-line bg-surface px-5 py-3">
+    <a class="flex items-center gap-2 text-xl font-semibold tracking-wide text-fg no-underline" href="/"><img class="block h-7 w-7 rounded-md" src="/static/LoscoLogo.jpg" alt="Losco">Losco</a>
+    <span class="flex-1"></span>
     {% block topbar_actions %}
-    <a class="btn primary" href="/nuevo">+ Nueva reserva</a>
-    <a class="btn" href="/ajustes">Ajustes</a>
+    <a class="inline-flex cursor-pointer items-center self-center rounded-lg bg-brand px-3.5 py-1.5 font-medium text-on-brand no-underline hover:bg-brand-hover" href="/nuevo">+ Nueva reserva</a>
+    <a class="inline-flex cursor-pointer items-center self-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-fg no-underline hover:bg-surface-hover" href="/ajustes">Ajustes</a>
     {% endblock %}
-    <form method="post" action="/logout" class="inline"><button class="btn">Salir</button></form>
+    <form method="post" action="/logout" class="inline"><button class="inline-flex cursor-pointer items-center self-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-fg hover:bg-surface-hover">Salir</button></form>
   </nav>
-  <main>
+  <main class="mx-auto max-w-[1100px] px-4 py-5 md:px-12">
   {% block content %}{% endblock %}
   </main>
 </body>

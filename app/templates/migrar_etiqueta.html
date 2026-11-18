@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Losco — Migrar etiqueta{% endblock %}
 {% block content %}
-<h1>Migrar etiqueta de reserva confirmada</h1>
-<p>Hay {{ total_contactos }} contactos y {{ total_conversaciones }} conversaciones con la etiqueta <strong>{{ vieja }}</strong>.</p>
-<p>¿Querés reemplazarla por <strong>{{ nueva }}</strong>?</p>
+<h1 class="mb-2 text-xl font-semibold">Migrar etiqueta de reserva confirmada</h1>
+<p class="mb-2 text-sm">Hay {{ total_contactos }} contactos y {{ total_conversaciones }} conversaciones con la etiqueta <strong>{{ vieja }}</strong>.</p>
+<p class="mb-4 text-sm">¿Querés reemplazarla por <strong>{{ nueva }}</strong>?</p>
 
-<form method="post" action="/ajustes/migrar-etiqueta" class="card">
+<form method="post" action="/ajustes/migrar-etiqueta" class="max-w-[460px] rounded-xl border border-line bg-surface p-5 shadow-sm">
   <input type="hidden" name="vieja" value="{{ vieja }}">
   <input type="hidden" name="nueva" value="{{ nueva }}">
-  <button class="btn primary" type="submit">Sí, migrar</button>
-  <a class="btn" href="/ajustes">Dejarlos como están</a>
+  <button class="inline-flex cursor-pointer items-center rounded-lg bg-brand px-3.5 py-1.5 font-medium text-on-brand hover:bg-brand-hover" type="submit">Sí, migrar</button>
+  <a class="inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-fg no-underline hover:bg-surface-hover" href="/ajustes">Dejarlos como están</a>
 </form>
 {% endblock %}

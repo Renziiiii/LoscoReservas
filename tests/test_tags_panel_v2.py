@@ -10,6 +10,7 @@ estado):
 - el viejo flag `envia_recordatorio` del estado queda FUERA de la decisión.
 """
 
+import re
 from datetime import date, time
 
 from app.models import EstadoReserva, Reserva
@@ -198,5 +199,6 @@ def test_tags_page_un_form_un_boton_eliminar_por_tarjeta(client):
     assert html.count('action="/ajustes/tags/guardar"') == 1
     assert 'formaction="/ajustes/tags/confirmada/eliminar"' in html
     assert 'formaction="/ajustes/tags/pendiente/eliminar"' in html
-    assert 'class="sel-etiqueta"' in html
+    # design-tokens S5: el select lleva utilities además del hook JS.
+    assert re.search(r'<select[^>]*class="[^"]*sel-etiqueta', html)
     assert 'name="nombre_confirmada"' in html
