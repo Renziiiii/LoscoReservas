@@ -110,3 +110,93 @@ def test_gate_ignora_flag_envia_recordatorio(app_ytablas):
     with app.state.sessionmaker() as session:
         elegidas = reservas_para_confirmar(session, HOY)
     assert [r.nombre for r in elegidas] == ["SíEnvíaIgual"]
+
+
+# --- T2: rework de la página Tags (S3-S5, S7) ---
+
+
+def test_guardar_batch_persiste_ediciones_y_nuevos(client):
+    """S3: UN solo botón Guardar al final persiste TODAS las ediciones.
+    S4: la etiqueta viaja como select (mismo campo etiqueta_<slug>)."""
+    resp = client.post(
+        "/ajustes/tags/guardar",
+        data={
+            "nombre_confirmada": "Confirmada nueva",
+            "etiqueta_confirmada": "reserva-confirmada",
+            "nombre_pendiente": "Pendiente",
+            "etiqueta_pendiente": "",
+            "nombre_cancelada": "Cancelada",
+            "etiqueta_cancelada": "",
+            "nuevo_nombre": ["Demorada", "Lista de espera"],
+            "nuevo_etiqueta": ["demorada-tag", ""],
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    assert estados["confirmada"]["nombre"] == "Confirmada nueva"
+    assert estados["confirmada"]["etiqueta_chatwoot"] == "reserva-confirmada"
+    assert estados["pendiente"]["etiqueta_chatwoot"] is None
+    assert estados["demorada"]["etiqueta_chatwoot"] == "demorada-tag"
+    assert "lista-de-espera" in estados
+
+
+def test_guardar_batch_rechaza_nombre_vacio_sin_persistir(client):
+    resp = client.post(
+        "/ajustes/tags/guardar",
+        data={"nombre_confirmada": "", "etiqueta_confirmada": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "error" in resp.headers["location"]
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    assert estados["confirmada"]["nombre"] == "Confirmada"  # sin cambio
+
+
+def test_eliminar_estado_base_habilitado(client):
+    """S5/D2: los 3 base son solo un template — todos eliminables si
+    ninguna reserva los usa."""
+    resp = client.post("/ajustes/tags/cancelada/eliminar", follow_redirects=False)
+    assert resp.status_code == 303
+    slugs = [row["slug"] for row in client.get("/api/estados").json()]
+    assert "cancelada" not in slugs
+
+
+def test_eliminar_estado_base_en_uso_bloqueado(client):
+    """S5: el guard de reservas en uso se conserva para los base también."""
+    crear = client.post(
+        "/api/reservas",
+        json={"nombre": "B", "telefono": "+5493512602003",
+              "fecha": "2026-03-21", "hora": "20:00", "personas": 2,
+              "estado": "cancelada"},
+    )
+    assert crear.status_code in (200, 201)
+    resp = client.post("/ajustes/tags/cancelada/eliminar", follow_redirects=False)
+    assert resp.status_code == 303
+    assert "error" in resp.headers["location"]
+    slugs = [row["slug"] for row in client.get("/api/estados").json()]
+    assert "cancelada" in slugs
+
+
+def test_default_de_reserva_cae_al_primer_estado_restante(client):
+    """S5: con 'pendiente' eliminada, una reserva sin estado explícito no
+    se rompe: cae al primer estado configurado (menor id)."""
+    assert client.post("/ajustes/tags/pendiente/eliminar", follow_redirects=False).status_code == 303
+    crear = client.post(
+        "/api/reservas",
+        json={"nombre": "C", "telefono": "+5493512602003",
+              "fecha": "2026-03-21", "hora": "20:00", "personas": 2},
+    )
+    assert crear.status_code in (200, 201)
+    assert crear.json()["estado"] == "confirmada"
+
+
+def test_tags_page_un_form_un_boton_eliminar_por_tarjeta(client):
+    """S3/S4/S5/S7: un solo form de guardado, select de etiquetas y botón
+    eliminar también en las tarjetas base."""
+    html = client.get("/ajustes/tags").text
+    assert html.count('action="/ajustes/tags/guardar"') == 1
+    assert 'formaction="/ajustes/tags/confirmada/eliminar"' in html
+    assert 'formaction="/ajustes/tags/pendiente/eliminar"' in html
+    assert 'class="sel-etiqueta"' in html
+    assert 'name="nombre_confirmada"' in html

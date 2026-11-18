@@ -175,10 +175,14 @@ def test_crud_eliminar_estado_no_base(client):
     assert "temporal" not in slugs
 
 
-def test_crud_eliminar_base_rechazada(client):
+def test_crud_eliminar_base_habilitada_sin_reservas(client):
+    """S5/D2 (tags-panel-v2): los estados base son solo un template — todos
+    eliminables cuando ninguna reserva los usa (el guard de reservas en uso
+    queda pinneado por test_crud_eliminar_con_reservas_rechazado)."""
     resp = client.delete("/api/estados/confirmada")
-    assert resp.status_code == 409
-    assert "base" in resp.text
+    assert resp.status_code in (200, 204)
+    slugs = {r["slug"] for r in client.get("/api/estados").json()}
+    assert "confirmada" not in slugs
 
 
 def test_crud_eliminar_con_reservas_rechazado(client):

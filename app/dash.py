@@ -152,7 +152,10 @@ def crear_reserva(request: Request, form: dict = Depends(_form_dict), session: S
     payload, errors, values = _parse_form(form, session)
     if payload is None:
         return _render_form(request, reserva=None, session=session, errors=errors, values=values)
-    reserva = Reserva(**payload.model_dump())
+    # tags-panel-v2 S5: persist the VALIDATED slug (fallback default when
+    # `pendiente` was deleted), not the raw form value.
+    reserva = Reserva(**{**payload.model_dump(),
+                         "estado": estado_valido(session, payload.estado)})
     session.add(reserva)
     session.commit()
     session.refresh(reserva)
@@ -179,6 +182,9 @@ def actualizar_reserva(
         return _render_form(request, reserva=reserva, session=session, errors=errors, values=values)
     for field, value in payload.model_dump().items():
         setattr(reserva, field, value)
+    # tags-panel-v2 S5: same as create — store the validated slug (the form
+    # may omit `estado`, which falls back to the first configured estado).
+    reserva.estado = estado_valido(session, payload.estado)
     session.commit()
     session.refresh(reserva)
     sincronizar_estado_reserva(
@@ -405,6 +411,79 @@ def ajustes_tags_page(
     )
 
 
+@router.post("/ajustes/tags/guardar")
+async def ajustes_tags_guardar(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """S3 (tags-panel-v2): UN solo botón Guardar al final de la página
+    persiste TODAS las ediciones: renombres + etiquetas de las tarjetas
+    existentes (campos `nombre_<slug>` / `etiqueta_<slug>`) y altas nuevas
+    (listas `nuevo_nombre` / `nuevo_etiqueta`). S6: no toca
+    `envia_recordatorio` (ya no se decide acá). Declarada ANTES de la ruta
+    `{slug}` para que 'guardar' no se interprete como slug."""
+    form = await request.form()
+
+    # 1) ediciones de tarjetas existentes
+    cambios_etiqueta: list[tuple[EstadoReserva, str | None]] = []
+    slugs = {key[len("nombre_"):] for key in form.keys() if key.startswith("nombre_")}
+    for slug in slugs:
+        estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
+        if estado is None:
+            continue
+        nombre = str(form.get(f"nombre_{slug}") or "").strip()
+        if not nombre or len(nombre) > 60:
+            return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
+        vieja = estado.etiqueta_chatwoot
+        nueva = str(form.get(f"etiqueta_{slug}") or "").strip() or None
+        estado.nombre = nombre
+        estado.etiqueta_chatwoot = nueva
+        if vieja and nueva and vieja != nueva:
+            cambios_etiqueta.append((estado, vieja))
+
+    # 2) altas nuevas (filas agregadas por el botón + Nuevo estado)
+    nombres = [n.strip() for n in form.getlist("nuevo_nombre")]
+    etiquetas = form.getlist("nuevo_etiqueta")
+    for i, nombre in enumerate(nombres):
+        if not nombre or len(nombre) > 60:
+            return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
+        slug = _slug_de(nombre)
+        if session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug)):
+            return _redirect_tags(error=f"Ya existe el estado '{slug}'.")
+        etiqueta = str(etiquetas[i] if i < len(etiquetas) else "").strip() or None
+        session.add(EstadoReserva(nombre=nombre, slug=slug,
+                                  etiqueta_chatwoot=etiqueta))
+    session.commit()
+
+    # 3) migración de etiqueta: solo si UNA etiqueta cambió (el flujo de
+    # confirmación es por etiqueta; múltiples cambios se guardan sin oferta)
+    if len(cambios_etiqueta) == 1 and _chatwoot_configurado(request.app.state.settings):
+        estado, vieja = cambios_etiqueta[0]
+        nueva = estado.etiqueta_chatwoot
+        try:
+            chatwoot = ChatwootClient(
+                request.app.state.settings.chatwoot_base_url,
+                request.app.state.settings.chatwoot_api_token,
+                request.app.state.settings.chatwoot_account_id,
+            )
+            total_contactos = len(chatwoot.contactos_con_etiqueta(vieja))
+            total_conversaciones = len(chatwoot.conversaciones_con_etiqueta(vieja))
+        except Exception:
+            return _redirect_tags()
+        if total_contactos + total_conversaciones > 0:
+            return templates.TemplateResponse(
+                request,
+                "migrar_etiqueta.html",
+                {
+                    "vieja": vieja,
+                    "nueva": nueva,
+                    "total_contactos": total_contactos,
+                    "total_conversaciones": total_conversaciones,
+                },
+            )
+    return _redirect_tags()
+
+
 @router.post("/ajustes/tags")
 def ajustes_tags_crear(
     request: Request,
@@ -482,8 +561,8 @@ def ajustes_tags_eliminar(
     estado = session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug))
     if estado is None:
         return _redirect_tags(error="Estado no encontrado.")
-    if estado.es_base:
-        return _redirect_tags(error="Los tres estados base no se pueden eliminar.")
+    # S5 (tags-panel-v2, D2): los estados base son solo un template — TODOS
+    # se pueden eliminar; el único guard que queda es reservas en uso.
     en_uso = session.scalar(
         select(func.count()).select_from(Reserva).where(Reserva.estado == slug)
     )
