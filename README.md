@@ -27,16 +27,23 @@ dentro de Chatwoot (que sirve WhatsApp, Instagram y Messenger).
   Cada reserva puede excluirse de los recordatorios (checkbox
   "Enviar recordatorios", default sí).
 - **Tags sincronizadas con Chatwoot**: los estados de las reservas son
-  configurables (Ajustes → Tags: alta/edición/baja, envía-recordatorios y
-  color por estado) y cada estado puede mapearse a una etiqueta de Chatwoot.
+  configurables (Ajustes → Tags: alta/edición/baja y etiqueta de Chatwoot
+  por estado, con selector de las etiquetas de la cuenta; guardado en lote —
+  un solo botón Guardar al final; los estados base son solo un template y
+  también se pueden eliminar si ninguna reserva los usa) y cada estado puede
+  mapearse a una etiqueta de Chatwoot.
   Al cambiar el estado de una reserva, la etiqueta del estado anterior se
   retira del contacto y de TODOS sus chats, y se aplica la del estado nuevo;
   todo chat nuevo del contacto (el WhatsApp que crea la mensajería
   automatizada, o cualquiera creado por un agente/otro canal vía webhook)
   hereda las etiquetas vigentes del contacto. Cambiar la etiqueta asignada a
   un estado ofrece migrar contactos y conversaciones existentes
-  (fail-soft: sin token configurado el guardado no falla). Detalle del
-  webhook: docs/webhook-chatwoot.md.
+  webhook de Chatwoot: docs/webhook-chatwoot.md.
+- **Tag disparadora de los envíos** (Ajustes → Mensajes automatizados): se
+  elige qué etiqueta de Chatwoot dispara los mensajes automáticos; el estado
+  cuya etiqueta mapea a esa tag es el único cuyas reservas los reciben
+  (si ningún estado tiene esa tag, no se envía nada y el panel lo muestra).
+  La decisión ya no vive en cada estado de la página Tags.
 - **Iframe en Chatwoot** con las reservas del contacto de la conversación
   (mecanismo Dashboard Apps) — ver `docs/iframe-chatwoot.md`.
 
@@ -144,8 +151,8 @@ registre reservas sin tocar el dashboard. Endpoints principales:
 - `GET /api/health` — liveness (público).
 - `GET /api/estados` / `POST/PATCH/DELETE /api/estados/{slug}` — Estados de
   reserva configurables y su etiqueta de Chatwoot (Crear 409 si duplica
-  slug; PATCH no cambia el slug; DELETE 409 para los 3 estados base o los
-  que tienen reservas asociadas).
+  slug; PATCH no cambia el slug; DELETE 409 para los que tienen reservas
+  asociadas — los estados base no están protegidos).
 
 ## Estructura
 

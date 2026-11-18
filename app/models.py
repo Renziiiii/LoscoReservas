@@ -38,13 +38,18 @@ class EstadoReserva(Base):
 
     Replaces the fixed `Estado = Literal[...]` of schemas.py as the single
     source of truth for which `Reserva.estado` values exist. Each state may
-    map to a Chatwoot label (S4: `etiqueta_chatwoot`, None = no sync) and
-    declares `envia_recordatorio` (S4: generalized replacement for the old
-    hardcoded `estado != "cancelada"` of the reminder engine).
+    map to a Chatwoot label (S4: `etiqueta_chatwoot`, None = no sync).
+
+    tags-panel-v2 (S2/S6): the reminder engine no longer reads
+    `envia_recordatorio` — the trigger tag in `Configuracion`
+    (`tag_disparadora`, matched against `etiqueta_chatwoot`) decides which
+    estado's reservas get the automated messages; the flag stays in the
+    table for rollback but is not editable or consulted.
 
     `nombre` is the display name; `slug` is the stored value of
     `Reserva.estado` (immutable after creation). `es_base` marks the three
-    migration seeds, which the Tags panel does not allow to delete.
+    migration seeds — display metadata only: since tags-panel-v2 S5 base
+    states are deletable like any other (guarded only by reservas in use).
     """
 
     __tablename__ = "estados_reserva"
