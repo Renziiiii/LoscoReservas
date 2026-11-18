@@ -28,6 +28,9 @@ class Configuracion(Base):
     plantilla_confirmacion: Mapped[str] = mapped_column(String(120), default="reserva_confirmacion")
     plantilla_invitados: Mapped[str] = mapped_column(String(120), default="invitados_confirmacion")
     etiqueta_confirmada: Mapped[str] = mapped_column(String(120), default="Reserva confirmada")
+    # tags-panel-v2 S2: the Chatwoot tag that triggers automated messages; the
+    # estado whose `etiqueta_chatwoot` equals this value gates the cron.
+    tag_disparadora: Mapped[str] = mapped_column(String(120), default="Reserva confirmada")
 
 
 class EstadoReserva(Base):

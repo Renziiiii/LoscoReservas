@@ -38,10 +38,6 @@ base no se pueden eliminar.</p>
     <input type="text" name="etiqueta_chatwoot" maxlength="120" list="etiquetas-cuenta"
       value="{{ estado.etiqueta_chatwoot or '' }}">
   </label>
-  <label>
-    <input type="checkbox" name="envia_recordatorio" {% if estado.envia_recordatorio %}checked{% endif %}>
-    Enviar mensajes automáticos a las reservas de este estado
-  </label>
   <button class="btn primary" type="submit">Guardar</button>
   {% if not estado.es_base %}
   <a class="btn danger" href="/ajustes/tags/{{ estado.slug }}/eliminar"
@@ -57,10 +53,6 @@ base no se pueden eliminar.</p>
   </label>
   <label>Etiqueta de Chatwoot (opcional)
     <input type="text" name="etiqueta_chatwoot" maxlength="120" list="etiquetas-cuenta">
-  </label>
-  <label>
-    <input type="checkbox" name="envia_recordatorio" checked>
-    Enviar mensajes automáticos a las reservas de este estado
   </label>
   <button class="btn primary" type="submit">Crear estado</button>
 </form>

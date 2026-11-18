@@ -27,6 +27,15 @@ elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.<
 {% endif %}
 
 <form method="post" action="/ajustes" class="card">
+  <h2>Tag disparadora de los envíos</h2>
+  <label>Etiqueta de Chatwoot que dispara los mensajes automáticos
+    <select id="sel-tag-disparadora" style="display:none"></select>
+    <input type="text" name="tag_disparadora" id="in-tag-disparadora" required maxlength="120"
+      value="{{ values.tag_disparadora if values.tag_disparadora is defined else config.tag_disparadora }}">
+    {% if errors.tag_disparadora %}<span class="error">{{ errors.tag_disparadora }}</span>{% endif %}
+  </label>
+  <p id="estado-disparador" class="muted"></p>
+
   <h2>Confirmación de reserva (T-48h)</h2>
   <label>Hora de envío
     <input type="time" name="hora_confirmacion" required
@@ -81,6 +90,40 @@ elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.<
       input.required = false;  // the select now guarantees a value
       select.addEventListener("change", function () { input.value = select.value; });
     }
+
+    fetch('/ajustes/etiquetas.json')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.motivo) {
+          activarSelector('sel-tag-disparadora', 'in-tag-disparadora', data.etiquetas, {
+            valor: function (e) { return e.title; }
+          });
+        }
+        actualizarEstadoDisparador();
+      })
+      .catch(function () {
+        actualizarEstadoDisparador();
+      });
+
+    var estadosPanel = {{ estados | tojson }};
+    var inTag = document.getElementById('in-tag-disparadora');
+    function actualizarEstadoDisparador() {
+      var salida = document.getElementById('estado-disparador');
+      var tag = (inTag.value || '').trim();
+      if (!tag) { salida.textContent = ''; return; }
+      var mapeados = estadosPanel.filter(function (e) {
+        return (e.etiqueta_chatwoot || '') === tag;
+      });
+      if (mapeados.length) {
+        salida.textContent = 'Estado disparador: ' +
+          mapeados.map(function (e) { return e.nombre; }).join(', ') +
+          ' — solo las reservas con ese estado reciben los mensajes automáticos.';
+      } else {
+        salida.textContent = 'Ningún estado tiene la tag "' + tag +
+          '" mapeada (configurala en la sección Tags): con este valor NO se envía nada.';
+      }
+    }
+    inTag.addEventListener('change', actualizarEstadoDisparador);
 
     fetch('/ajustes/plantillas.json')
       .then(function (r) { return r.json(); })

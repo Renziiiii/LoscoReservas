@@ -27,6 +27,16 @@ def anon_client(tmp_path):
 
 
 @pytest.fixture()
+def app_ytablas(tmp_path):
+    """App booteada (lifespan corrió: tabla de estados semillada) + TestClient.
+    App-level fixture (antes en test_estados.py) compartida con
+    test_tags_panel_v2.py."""
+    app = create_app(_make_settings(tmp_path))
+    with TestClient(app) as test_client:
+        yield app, test_client
+
+
+@pytest.fixture()
 def client(anon_client):
     """Same client, authenticated as the seeded test user."""
     response = anon_client.post(

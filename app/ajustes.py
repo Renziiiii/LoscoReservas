@@ -32,6 +32,25 @@ def _asegurar_columna_etiqueta(engine: Engine) -> None:
             )
 
 
+def _asegurar_columna_tag_disparadora(engine: Engine) -> None:
+    """Idempotent migration (tags-panel-v2 T1): add `tag_disparadora` to
+    `configuracion` for databases deployed before this feature. Same pattern
+    as `_asegurar_columna_etiqueta`; the default keeps current behavior
+    ("Reserva confirmada" maps to the seeded `confirmada` estado)."""
+    with engine.begin() as conn:
+        columns = [
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(configuracion)")).fetchall()
+        ]
+        if "tag_disparadora" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE configuracion ADD COLUMN tag_disparadora "
+                    "VARCHAR(120) NOT NULL DEFAULT 'Reserva confirmada'"
+                )
+            )
+
+
 def obtener_configuracion(session: Session, settings: Settings) -> Configuracion:
     """Return configuration row 1, seeding it from the env defaults on the
     first access (after that, the DB wins and the env is ignored)."""
@@ -44,6 +63,7 @@ def obtener_configuracion(session: Session, settings: Settings) -> Configuracion
             plantilla_confirmacion=settings.template_confirmacion,
             plantilla_invitados=settings.template_invitados,
             etiqueta_confirmada="Reserva confirmada",
+            tag_disparadora="Reserva confirmada",
         )
         session.add(config)
         session.commit()

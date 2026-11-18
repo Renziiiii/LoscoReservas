@@ -25,7 +25,7 @@ from app.mensajeria import (
     reservas_para_confirmar,
     reservas_para_recordar_invitados,
 )
-from app.models import Reserva
+from app.models import Configuracion, EstadoReserva, Reserva
 
 HOY = date(2026, 3, 20)  # Friday
 
@@ -37,6 +37,9 @@ def crear(client, **overrides):
         "fecha": "2026-03-22",  # HOY + 2 → due for confirmation
         "hora": "21:00",
         "personas": 4,
+        # tags-panel-v2 S2: the trigger tag (default "Reserva confirmada")
+        # maps to the seeded `confirmada` estado — pipeline tests send with it.
+        "estado": "confirmada",
     }
     payload.update(overrides)
     response = client.post("/api/reservas", json=payload)
@@ -466,10 +469,17 @@ def _chatwoot_settings(tmp_path) -> AppSettings:
 
 
 def _seed_reserva_confirmacion(session):
+    # tags-panel-v2 S2: the trigger tag maps to `confirmada`; these tests
+    # boot without lifespan, so the estado row and the single config row
+    # (which carries tag_disparadora) are seeded here.
+    session.add(Configuracion(id=1))
+    session.add(EstadoReserva(nombre="Confirmada", slug="confirmada",
+                              etiqueta_chatwoot="Reserva confirmada"))
     session.add(Reserva(
         nombre="Juan Pérez", telefono="+5491111111111",
         fecha=date(2026, 3, 22), hora=datetime.strptime("21:00", "%H:%M").time(),
         personas=4,
+        estado="confirmada",
     ))
     session.commit()
 

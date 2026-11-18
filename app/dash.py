@@ -190,7 +190,7 @@ def actualizar_reserva(
 
 # --- ajustes de mensajería (L19: horas y plantillas en el panel, no env) ---
 
-AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora")
 
 
 def _render_ajustes(
@@ -201,6 +201,7 @@ def _render_ajustes(
     migrados_contactos: int | None = None,
     migrados_conv: int | None = None,
     fallas: int | None = None,
+    estados: list | None = None,
 ):
     return templates.TemplateResponse(
         request,
@@ -212,6 +213,9 @@ def _render_ajustes(
             "migrados_contactos": migrados_contactos,
             "migrados_conv": migrados_conv,
             "fallas": fallas,
+            # tags-panel-v2 S2: nombre/tag de cada estado para mostrar cuál
+            # queda como disparador con la tag elegida.
+            "estados": estados or [],
         },
     )
 
@@ -232,12 +236,17 @@ def ajustes_page(
     session: Session = Depends(get_session),
 ):
     config = obtener_configuracion(session, request.app.state.settings)
+    estados = [
+        {"nombre": e.nombre, "slug": e.slug, "etiqueta_chatwoot": e.etiqueta_chatwoot}
+        for e in session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))
+    ]
     return _render_ajustes(
         request,
         config,
         migrados_contactos=migrados_contactos,
         migrados_conv=migrados_conv,
         fallas=fallas,
+        estados=estados,
     )
 
 
@@ -255,7 +264,9 @@ def _chatwoot_configurado(settings: Settings) -> bool:
 # T4 (tags-estados-sync): `etiqueta_confirmada` salió de la config de
 # mensajería — el mapeo estado↔etiqueta vive en `estados_reserva` y se
 # edita en la página Tags (/ajustes/tags).
-AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados")
+# tags-panel-v2 (S2/D1): `tag_disparadora` vuelve a la config de mensajería:
+# la tag elegida señala al estado disparador que gatea el cron.
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora")
 
 
 def _ajustes_payload(config) -> dict:
@@ -286,6 +297,8 @@ def ajustes_json_put(
     for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "Es obligatorio."
+    if not values["tag_disparadora"]:
+        errors["tag_disparadora"] = "Es obligatoria: decide qué estado dispara los envíos."
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
@@ -307,6 +320,7 @@ def ajustes_submit(
     hora_invitados: str | None = Form(None),
     plantilla_confirmacion: str | None = Form(None),
     plantilla_invitados: str | None = Form(None),
+    tag_disparadora: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     """T4: solo mensajería. Un POST legacy que aún envíe
@@ -317,6 +331,7 @@ def ajustes_submit(
         "hora_invitados": (hora_invitados or "").strip(),
         "plantilla_confirmacion": (plantilla_confirmacion or "").strip(),
         "plantilla_invitados": (plantilla_invitados or "").strip(),
+        "tag_disparadora": (tag_disparadora or "").strip(),
     }
     errors: dict[str, str] = {}
     for campo in ("hora_confirmacion", "hora_invitados"):
@@ -327,15 +342,27 @@ def ajustes_submit(
     for campo in ("plantilla_confirmacion", "plantilla_invitados"):
         if not values[campo]:
             errors[campo] = "El nombre de la plantilla es obligatorio."
+    if not values["tag_disparadora"]:
+        errors["tag_disparadora"] = "La tag disparadora es obligatoria."
     if errors:
         config = obtener_configuracion(session, settings)
-        return _render_ajustes(request, config, errors=errors, values=values)
+        return _render_ajustes(
+            request,
+            config,
+            errors=errors,
+            values=values,
+            estados=[
+                {"nombre": e.nombre, "slug": e.slug, "etiqueta_chatwoot": e.etiqueta_chatwoot}
+                for e in session.scalars(select(EstadoReserva).order_by(EstadoReserva.id))
+            ],
+        )
 
     config = obtener_configuracion(session, settings)
     config.hora_confirmacion = values["hora_confirmacion"]
     config.hora_invitados = values["hora_invitados"]
     config.plantilla_confirmacion = values["plantilla_confirmacion"]
     config.plantilla_invitados = values["plantilla_invitados"]
+    config.tag_disparadora = values["tag_disparadora"]
     session.commit()
 
     scheduler = getattr(request.app.state, "scheduler", None)
@@ -383,7 +410,6 @@ def ajustes_tags_crear(
     request: Request,
     nombre: str | None = Form(None),
     etiqueta_chatwoot: str | None = Form(None),
-    envia_recordatorio: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     nombre = (nombre or "").strip()
@@ -395,8 +421,7 @@ def ajustes_tags_crear(
     session.add(EstadoReserva(
         nombre=nombre, slug=slug,
         etiqueta_chatwoot=(etiqueta_chatwoot or "").strip() or None,
-        envia_recordatorio=envia_recordatorio is not None,
-    ))
+    ))  # S6 (tags-panel-v2): envia_recordatorio ya no se edita por UI
     session.commit()
     return _redirect_tags()
 
@@ -407,7 +432,6 @@ def ajustes_tags_editar(
     slug: str,
     nombre: str | None = Form(None),
     etiqueta_chatwoot: str | None = Form(None),
-    envia_recordatorio: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     """Edición de un estado. Al cambiar la etiqueta de Chatwoot se consulta
@@ -424,7 +448,6 @@ def ajustes_tags_editar(
     nueva = (etiqueta_chatwoot or "").strip() or None
     estado.nombre = nombre
     estado.etiqueta_chatwoot = nueva
-    estado.envia_recordatorio = envia_recordatorio is not None
     session.commit()
 
     if _chatwoot_configurado(settings) and vieja and nueva and vieja != nueva:

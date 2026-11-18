@@ -10,24 +10,14 @@ Cubre S3/S4 del doc de feature:
 
 from datetime import date, time
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import Configuracion, EstadoReserva
-from tests.conftest import _make_settings
+from app.models import Configuracion, EstadoReserva, Reserva
 
 VALID = dict(nombre="A", telefono="+5493512602003", fecha="2026-03-21",
              hora="20:00", personas=2)
-
-
-@pytest.fixture()
-def app_ytablas(tmp_path):
-    """App booteada (lifespan corrió: tabla de estados semillada) + TestClient."""
-    app = create_app(_make_settings(tmp_path))
-    with TestClient(app) as test_client:
-        yield app, test_client
 
 
 def _seed_estado(app, nombre, slug, envia_recordatorio=True, etiqueta=None):
@@ -104,21 +94,21 @@ def test_iframe_estados_requiere_key(tmp_path):
         assert test_client.get("/iframe/estados.json").status_code == 403
 
 
-def test_mensajeria_respeta_envia_recordatorio(app_ytablas):
-    """S4: el motor de recordatorios ya no consulta `estado != "cancelada"`,
-    ahora se fija en envia_recordatorio del estado de cada reserva."""
+def test_mensajeria_gatea_por_tag_disparadora_no_por_flag(app_ytablas):
+    """S2/S6 (tags-panel-v2): la regla vieja del flag `envia_recordatorio`
+    quedó reemplazada — el envío lo decide la tag disparadora (la cubre
+    tests/test_tags_panel_v2.py). Este caso queda como defensa: un estado
+    sin la tag mapeada no envía aunque su flag sea True."""
     app, test_client = app_ytablas
     _seed_estado(app, "Esperando", "esperando", envia_recordatorio=True)
-    _seed_estado(app, "Aviso", "aviso", envia_recordatorio=False)
     with app.state.sessionmaker() as session:
-        from app.models import Reserva
         reservas = [
             Reserva(nombre="SíEnvía", telefono="+5493512600001",
                     fecha=date(2026, 3, 23), hora=time(20, 0), personas=2,
-                    estado="esperando"),
+                    estado="confirmada"),
             Reserva(nombre="NoEnvía", telefono="+5493512600002",
                     fecha=date(2026, 3, 23), hora=time(21, 0), personas=2,
-                    estado="aviso"),
+                    estado="esperando"),
         ]
         session.add_all(reservas)
         session.commit()
@@ -253,6 +243,7 @@ def test_post_ajustes_ignora_campo_etiqueta_viejo(client):
         "plantilla_confirmacion": "conf_losco",
         "plantilla_invitados": "invitados_losco",
         "etiqueta_confirmada": "No debería persistir",
+        "tag_disparadora": "reserva-confirmada",
     }
     resp = client.post("/ajustes", data=data, follow_redirects=False)
     assert resp.status_code == 303

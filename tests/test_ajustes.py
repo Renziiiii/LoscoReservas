@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.etiquetas import migrar_etiqueta
 from app.main import create_app
-from app.models import Base, Configuracion, EstadoReserva as Estado, Reserva
+from app.models import Base, Configuracion, EstadoReserva, Reserva
 from app.scheduler import build_scheduler, reprogramar
 
 TEST_USERS = "valen:testpass123"
@@ -47,6 +47,7 @@ FORM_DATA = {
     "plantilla_confirmacion": "conf_losco",
     "plantilla_invitados": "invitados_losco",
     "etiqueta_confirmada": "Reserva confirmada",
+    "tag_disparadora": "Reserva confirmada",
 }
 
 
@@ -180,6 +181,10 @@ def test_job_uses_db_template_at_run_time(tmp_path, monkeypatch):
     app, settings = _seeded_app(tmp_path, {"plantilla_confirmacion": "plantilla_db"})
     dos_dias = date.today() + timedelta(days=2)
     with app.state.sessionmaker() as session:
+        # tags-panel-v2 S2: the trigger tag maps to `confirmada` — the job
+        # only picks reservas whose estado has the tag mapped.
+        session.add(EstadoReserva(nombre="Confirmada", slug="confirmada",
+                                  etiqueta_chatwoot="Reserva confirmada"))
         session.add(
             Reserva(
                 nombre="Valen",
@@ -187,6 +192,7 @@ def test_job_uses_db_template_at_run_time(tmp_path, monkeypatch):
                 fecha=dos_dias,
                 hora=datetime.strptime("21:00", "%H:%M").time(),
                 personas=4,
+                estado="confirmada",
             )
         )
         session.commit()
@@ -912,7 +918,7 @@ def test_post_ajustes_cambio_etiqueta_muestra_confirmacion(tmp_path, monkeypatch
 
         with client.app.state.sessionmaker() as session:
             estado = session.scalars(
-                select(Estado).where(Estado.slug == "confirmada")
+                select(EstadoReserva).where(EstadoReserva.slug == "confirmada")
             ).one()
             assert estado.etiqueta_chatwoot == "Confirmada nueva"
 
@@ -1037,13 +1043,15 @@ def test_api_ajustes_requires_auth(anon_client):
 
 
 def test_api_ajustes_get_returns_messaging_config(client):
-    """T4: the label mapping left the messaging config (Tags page owns it)."""
+    """T4: the label mapping left the messaging config (Tags page owns it).
+    tags-panel-v2: `tag_disparadora` lives here again (S2)."""
     body = client.get("/api/ajustes").json()
     assert set(body) == {
         "hora_confirmacion",
         "hora_invitados",
         "plantilla_confirmacion",
         "plantilla_invitados",
+        "tag_disparadora",
     }
 
 
@@ -1056,12 +1064,14 @@ def test_api_ajustes_put_saves_and_returns_updated(client):
             "plantilla_confirmacion": "conf_new",
             "plantilla_invitados": "inv_new",
             "etiqueta_confirmada": "Reserva OK",
+            "tag_disparadora": "reserva-confirmada",
         },
     )
     assert response.status_code == 200
     assert response.json()["hora_confirmacion"] == "08:30"
     body = client.get("/api/ajustes").json()
     assert body["plantilla_invitados"] == "inv_new"
+    assert body["tag_disparadora"] == "reserva-confirmada"
     assert "etiqueta_confirmada" not in body
 
 
@@ -1104,6 +1114,7 @@ def test_api_ajustes_put_ignora_etiqueta_vacia(client):
             "plantilla_confirmacion": "conf",
             "plantilla_invitados": "inv",
             "etiqueta_confirmada": "",
+            "tag_disparadora": "Reserva confirmada",
         },
     )
     assert response.status_code == 200
