@@ -14,7 +14,7 @@ Estado = str
 
 def _normalize_telefono(value: str) -> str:
     r"""Store phones in full international (E.164) format: both
-    '+54 9 351 260-2003' and '5493512602003' become '+5493512602003'.
+    '+54 9 321 098-7654' and '5493210987654' become '+5493210987654'.
 
     Chatwoot 4.17 accepts only the /\+[1-9]\d{1,14}/ pattern (L51) and every
     phone in the account is stored '+...', so the '+' is always prepended
@@ -25,7 +25,7 @@ def _normalize_telefono(value: str) -> str:
     if not 11 <= len(digitos) <= 15 or digitos.startswith("0"):
         raise ValueError(
             "telefono must be in international format with the country "
-            "code (e.g. +54 9 351 260-2003)"
+            "code (e.g. 5493210987654)"
         )
     return f"+{digitos}"
 

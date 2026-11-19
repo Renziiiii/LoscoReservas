@@ -436,7 +436,7 @@
           {#if !telefono}
             <span class="text-muted">
               El contacto no tiene teléfono en Chatwoot — anotá el número
-              completo con código de país (ej: +5493512602003); queda
+              completo con código de país (ej: 5493210987654); queda
               registrado también en su contacto.
             </span>
           {/if}

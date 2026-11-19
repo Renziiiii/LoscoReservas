@@ -16,7 +16,7 @@ from app.config import Settings
 from app.main import create_app
 from app.models import Configuracion, EstadoReserva, Reserva
 
-VALID = dict(nombre="A", telefono="+5493512602003", fecha="2026-03-21",
+VALID = dict(nombre="A", telefono="+5493210987654", fecha="2026-03-21",
              hora="20:00", personas=2)
 
 
@@ -188,7 +188,7 @@ def test_crud_eliminar_base_habilitada_sin_reservas(client):
 def test_crud_eliminar_con_reservas_rechazado(client):
     client.post("/api/estados", json={"nombre": "Temporal"})
     created = client.post("/api/reservas", json={
-        "nombre": "Juan", "telefono": "+5493512602003",
+        "nombre": "Juan", "telefono": "+5493210987654",
         "fecha": "2026-03-21", "hora": "20:00", "personas": 2, "estado": "temporal",
     })
     assert created.status_code == 201

@@ -167,7 +167,7 @@ def test_eliminar_estado_base_en_uso_bloqueado(client):
     """S5: el guard de reservas en uso se conserva para los base también."""
     crear = client.post(
         "/api/reservas",
-        json={"nombre": "B", "telefono": "+5493512602003",
+        json={"nombre": "B", "telefono": "+5493210987654",
               "fecha": "2026-03-21", "hora": "20:00", "personas": 2,
               "estado": "cancelada"},
     )
@@ -185,7 +185,7 @@ def test_default_de_reserva_cae_al_primer_estado_restante(client):
     assert client.post("/ajustes/tags/pendiente/eliminar", follow_redirects=False).status_code == 303
     crear = client.post(
         "/api/reservas",
-        json={"nombre": "C", "telefono": "+5493512602003",
+        json={"nombre": "C", "telefono": "+5493210987654",
               "fecha": "2026-03-21", "hora": "20:00", "personas": 2},
     )
     assert crear.status_code in (200, 201)

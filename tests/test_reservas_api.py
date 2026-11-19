@@ -158,7 +158,7 @@ def test_delete_missing_id_returns_404(client):
 def test_create_rejects_telefono_without_country_code(client):
     """A local number (no country code) gets stored today and then rejected
     by Chatwoot's 422 and by Meta silently — reject it at the door."""
-    payload = dict(VALID_PAYLOAD, telefono="3512602003")  # user's real test
+    payload = dict(VALID_PAYLOAD, telefono="3210987654")  # local number without country code (rejected)
     response = client.post("/api/reservas", json=payload)
     assert response.status_code == 422
 
@@ -166,10 +166,10 @@ def test_create_rejects_telefono_without_country_code(client):
 def test_create_completes_missing_plus_prefix(client):
     """Typed with the country code but without the '+': stored as valid
     E.164 so the Chatwoot contact write and the WA send both work."""
-    payload = dict(VALID_PAYLOAD, telefono="5493512602003")
+    payload = dict(VALID_PAYLOAD, telefono="5493210987654")
     response = client.post("/api/reservas", json=payload)
     assert response.status_code == 201, response.text
-    assert response.json()["telefono"] == "+5493512602003"
+    assert response.json()["telefono"] == "+5493210987654"
 
 
 def test_create_rejects_telefono_starting_with_zero(client):

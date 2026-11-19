@@ -439,13 +439,13 @@ def test_numero_legacy_sin_mas_se_normaliza_a_e164(client):
     contact is created with the same format as every other contact."""
     fake = ChatwootFake(contact_by_phone={})  # legacy row -> no contact yet
     chatwoot = fake.client()
-    chatwoot.asegurar_conversacion_whatsapp("5493512602003", "Renzi")
+    chatwoot.asegurar_conversacion_whatsapp("5493210987654", "Renzi")
     posts = [
         json.loads(body)
         for method, path, body in fake.requests
         if method == "POST" and path.endswith("/contacts")
     ]
-    assert posts and posts[0]["phone_number"] == "+5493512602003"
+    assert posts and posts[0]["phone_number"] == "+5493210987654"
 
 
 # --- T6 (tags-estados-sync): el chat creado/resuelto por la automatización
