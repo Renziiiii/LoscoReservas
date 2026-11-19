@@ -6,9 +6,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build:dashboard": "tailwindcss -i ./src/dashboard.css -o ../app/static/styles.css"
+    "build:dashboard": "tailwindcss -i ./src/dashboard.css -o ../app/static/styles.css",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@sveltejs/vite-plugin-svelte": "^7",
     "@tailwindcss/cli": "^4.3.5",
     "svelte": "^5",
@@ -16,8 +18,10 @@
     "vite": "^8"
   },
   "dependencies": {
+    "@intl-tel-input/svelte": "^29.5.11",
     "@tailwindcss/vite": "^4.3.5",
     "fullcalendar": "^7.1.5",
+    "intl-tel-input": "^29.5.11",
     "tailwindcss": "^4.3.5"
   }
 }

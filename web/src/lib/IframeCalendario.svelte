@@ -18,6 +18,7 @@
   import esLocale from "fullcalendar/locales/es";
   import type { Calendar, CalendarOptions } from "fullcalendar";
   import FullCalendarHost from "./FullCalendarHost.svelte";
+  import InputTelefono from "./InputTelefono.svelte";
   import {
     atenuarColor,
     coloresEstado,
@@ -425,17 +426,12 @@
       </label>
       <label class="col-span-2 flex flex-col gap-0.5">
         <span class="text-muted">Teléfono</span>
-        <input
-          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-          type="tel"
-          bind:value={telefono}
-          required
-        />
+        <InputTelefono bind:value={telefono} />
         {#if !telefono}
           <span class="text-muted">
-            El contacto no tiene teléfono en Chatwoot — anotá el número
-            completo con código de país (ej: 5493210987654); queda
-            registrado también en su contacto.
+            El contacto no tiene teléfono en Chatwoot — elegí el país y anotá
+            el número (ej: 9 321 098 7654); queda registrado también en su
+            contacto.
           </span>
         {/if}
       </label>

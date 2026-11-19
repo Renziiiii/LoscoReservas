@@ -10,6 +10,7 @@
     type Reserva,
   } from "./lib/reservas";
   import CalendarioReservas from "./lib/CalendarioReservas.svelte";
+  import InputTelefono from "./lib/InputTelefono.svelte";
   // Look vanilla de FullCalendar (como los demos): theme forma + paleta blue.
   // Estos imports van DESPUÉS de app.css (ver app.css: cascade a propósito).
   import "fullcalendar/skeleton.css";
@@ -340,14 +341,8 @@ los paneles quedan pegados entre sí y a los bordes, esquinas rectas. -->
             <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="text" bind:value={draft.nombre} required />
           </label>
           <label class="col-span-2 flex flex-col gap-1">
-            <span class="text-muted">Teléfono (ej: 5491234567890)</span>
-            <input
-              class="rounded border border-line-strong bg-surface text-fg px-2 py-1 font-mono"
-              type="text"
-              bind:value={draft.telefono}
-              disabled={modo === "editar"}
-              required
-            />
+            <span class="text-muted">Teléfono</span>
+            <InputTelefono bind:value={draft.telefono} disabled={modo === "editar"} />
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-muted">Fecha</span>
