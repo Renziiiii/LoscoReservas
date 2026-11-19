@@ -36,6 +36,9 @@
 
   let key = "";
   let contactoNombre = $state("");
+  let contactoId = $state<number | null>(null);
+  /** S11: editable — the contact's phone, or the number the agent
+   * annotates when the Chatwoot contact has none (Instagram chats). */
   let telefono = $state("");
   /** Aviso único y efímero (no un log): el resultado de la última acción. */
   let toast = $state<{ texto: string; tipo: "ok" | "err" } | null>(null);
@@ -87,12 +90,9 @@
     cargarDraft(r);
   }
 
-  /** Alta desde el calendario (dateClick/select): mismo panel, modo crear. */
+  /** Alta desde el calendario (dateClick/select): mismo panel, modo crear.
+   * S11: sin guardia de teléfono — el campo es editable en el formulario. */
   function abrirCrear(fecha: string, hora: string) {
-    if (!telefono) {
-      avisar("el contacto no tiene teléfono cargado", "err");
-      return;
-    }
     seleccionada = null;
     modo = "crear";
     draft = {
@@ -183,9 +183,13 @@
     try {
       const cuerpo = JSON.stringify({
         nombre: draft.nombre,
-        // El POST exige telefono (ReservaCreate); en crear viene del
-        // contacto de Chatwoot que abrió el panel y no está en el draft.
-        ...(modo === "crear" ? { telefono } : {}),
+        // El POST exige telefono (ReservaCreate). S11: es el del contacto
+        // o el que el agente anotó; contacto_chatwoot_id pide al backend
+        // escribir el número en el contacto de Chatwoot sólo si está vacío
+        // (fail-soft, app/contactos.py).
+        ...(modo === "crear"
+          ? { telefono, contacto_chatwoot_id: contactoId ?? undefined }
+          : {}),
         fecha: draft.fecha,
         hora: draft.hora,
         personas: draft.personas,
@@ -259,13 +263,15 @@
     }
     if (!data || data.event !== "appContext" || !data.data) return;
     const contact = data.data.contact ?? {};
-    const tel = contact.phone_number || contact.phone || "";
-    if (!tel) {
-      avisar("el contacto no tiene teléfono", "err");
-      return;
-    }
+    contactoId = typeof contact.id === "number" ? contact.id : null;
     contactoNombre = contact.name || "";
-    telefono = tel;
+    // S11: a contact without a phone (Instagram chats) blocks nothing —
+    // the agent annotates the number in the create form and the
+    // reservations list loads once the phone is known.
+    telefono = contact.phone_number || contact.phone || "";
+    if (!telefono) {
+      avisar("el contacto no tiene teléfono — anotalo al crear la reserva");
+    }
     cargar();
   }
 
@@ -418,6 +424,24 @@
           required
         />
       </label>
+      {#if modo === "crear"}
+        <label class="col-span-2 flex flex-col gap-0.5">
+          <span class="text-muted">Teléfono</span>
+          <input
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            type="tel"
+            bind:value={telefono}
+            required
+          />
+          {#if !telefono}
+            <span class="text-muted">
+              El contacto no tiene teléfono en Chatwoot — anotá el número
+              completo con código de país (ej: +5493512602003); queda
+              registrado también en su contacto.
+            </span>
+          {/if}
+        </label>
+      {/if}
       <label class="flex flex-col gap-0.5">
         <span class="text-muted">Fecha</span>
         <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="date" bind:value={draft.fecha} required />
