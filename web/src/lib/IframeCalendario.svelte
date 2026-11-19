@@ -272,9 +272,6 @@
     // the agent annotates the number in the create form and the
     // reservations list loads once the phone is known.
     telefono = contact.phone_number || contact.phone || "";
-    if (!telefono) {
-      avisar("el contacto no tiene teléfono — anotalo al crear la reserva");
-    }
     cargar();
   }
 
@@ -399,10 +396,9 @@
 {/if}
 
 {#if draft}
-  <!-- L15: sin padding ni márgenes — flush contra el borde del iframe
-  (mismo criterio que el calendario, L65); los inputs llevan su propio
-  padding interno. -->
-  <div class="border-y border-line bg-surface">
+  <!-- L15: flush contra el borde (L65), el usuario pidió un margen —
+  separa el panel del calendario; los inputs llevan su propio padding. -->
+  <div class="border border-line rounded bg-surface my-2 mx-2">
     <div class="flex items-baseline justify-between gap-2">
       <h3 class="text-sm font-semibold">
         {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
