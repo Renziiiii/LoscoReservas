@@ -82,6 +82,9 @@
       detalles: r.detalles ?? "",
       enviar_recordatorio: r.enviar_recordatorio ?? true,
     };
+    // S11: el teléfono es editable también al editar — corregirlo
+    // sincroniza el contacto de Chatwoot (sólo si está vacío).
+    telefono = r.telefono;
   }
 
   function abrir(r: Reserva) {
@@ -183,13 +186,13 @@
     try {
       const cuerpo = JSON.stringify({
         nombre: draft.nombre,
-        // El POST exige telefono (ReservaCreate). S11: es el del contacto
-        // o el que el agente anotó; contacto_chatwoot_id pide al backend
-        // escribir el número en el contacto de Chatwoot sólo si está vacío
-        // (fail-soft, app/contactos.py).
-        ...(modo === "crear"
-          ? { telefono, contacto_chatwoot_id: contactoId ?? undefined }
-          : {}),
+        // POST exige telefono (ReservaCreate); PATCH lo acepta para
+        // corregirlo. S11: es el del contacto o el que el agente anotó;
+        // contacto_chatwoot_id pide al backend escribir el número en el
+        // contacto de Chatwoot sólo si está vacío (fail-soft,
+        // app/contactos.py). JSON.stringify descarta claves undefined.
+        telefono,
+        contacto_chatwoot_id: contactoId ?? undefined,
         fecha: draft.fecha,
         hora: draft.hora,
         personas: draft.personas,
@@ -424,24 +427,22 @@
           required
         />
       </label>
-      {#if modo === "crear"}
-        <label class="col-span-2 flex flex-col gap-0.5">
-          <span class="text-muted">Teléfono</span>
-          <input
-            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-            type="tel"
-            bind:value={telefono}
-            required
-          />
-          {#if !telefono}
-            <span class="text-muted">
-              El contacto no tiene teléfono en Chatwoot — anotá el número
-              completo con código de país (ej: 5493210987654); queda
-              registrado también en su contacto.
-            </span>
-          {/if}
-        </label>
-      {/if}
+      <label class="col-span-2 flex flex-col gap-0.5">
+        <span class="text-muted">Teléfono</span>
+        <input
+          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+          type="tel"
+          bind:value={telefono}
+          required
+        />
+        {#if !telefono}
+          <span class="text-muted">
+            El contacto no tiene teléfono en Chatwoot — anotá el número
+            completo con código de país (ej: 5493210987654); queda
+            registrado también en su contacto.
+          </span>
+        {/if}
+      </label>
       <label class="flex flex-col gap-0.5">
         <span class="text-muted">Fecha</span>
         <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="date" bind:value={draft.fecha} required />
