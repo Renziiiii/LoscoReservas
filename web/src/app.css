@@ -44,11 +44,13 @@
 }
 
 /* Bordes rectos estilo Chatwoot: el tema forma de FullCalendar redondea
- * botones, eventos y bloques con clases hashed (fc-forma-AAA/Fvv/kmj…),
- * así que aplanamos todo lo que vive dentro de .fc. !important porque el
- * tema carga después de este archivo y gana los empates de especificidad. */
-.fc,
-.fc * {
+ * botones, eventos y bloques con clases hashed (fc-forma-AAA/Fvv/kmj…).
+ * FullCalendar v7 ya no usa .fc como raíz: la raíz es la clase del tema
+ * (fc-forma-n5m, estable en el theme.css de la versión instalada).
+ * !important porque el tema carga después de este archivo y gana los
+ * empates de especificidad. */
+.fc-forma-n5m,
+.fc-forma-n5m * {
   border-radius: 0 !important;
   border-start-start-radius: 0 !important;
   border-start-end-radius: 0 !important;
@@ -57,7 +59,7 @@
 }
 
 /* Dark mode de FullCalendar: el tema forma define sus colores en
- * variables --fc-* sobre .fc; las re-mapeamos a nuestros roles bajo
+ * variables --fc-* sobre la raíz del tema (fc-forma-n5m, ver arriba); las re-mapeamos a nuestros roles bajo
  * .dark (los componentes del calendario no cambian). */
 .dark .fc {
   color: var(--fg);
