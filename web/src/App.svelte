@@ -276,7 +276,8 @@
 </script>
 
 <!-- L14: layout de alto fijo — header + leyenda fijos, el resto scrollea
-por dentro de cada columna; nada se sale del viewport. -->
+por dentro de cada columna; nada se sale del viewport. Sin padding ni gap:
+los paneles quedan pegados entre sí y a los bordes, esquinas rectas. -->
 <div class="flex h-screen flex-col overflow-hidden">
 <header class="flex items-baseline gap-3 px-5 py-3 border-b border-line">
   <span class="text-xl font-semibold tracking-wide">Losco</span>
@@ -292,8 +293,8 @@ por dentro de cada columna; nada se sale del viewport. -->
   {/each}
 </div>
 
-<main class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 lg:flex-row lg:overflow-hidden">
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface p-2 shadow-sm">
+<main class="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col border border-line bg-surface">
     <CalendarioReservas
     {reservas}
     estados={leyenda}
@@ -310,7 +311,7 @@ por dentro de cada columna; nada se sale del viewport. -->
     />
   </div>
 
-  <aside class="flex w-full shrink-0 flex-col gap-4 lg:w-80 lg:overflow-y-auto">
+  <aside class="flex w-full shrink-0 flex-col lg:w-80 lg:overflow-y-auto">
     {#if toast}
       <div
         class="rounded-lg px-3 py-2 text-sm {toast.tipo === 'ok' ? 'text-ok-text bg-ok-surface' : 'text-danger-text bg-danger-surface'}"
@@ -319,7 +320,7 @@ por dentro de cada columna; nada se sale del viewport. -->
     {/if}
 
     {#if draft}
-      <div class="rounded-xl border border-line p-4 shadow-sm bg-surface">
+      <div class="border border-line p-4 shadow-sm bg-surface">
         <div class="flex items-baseline justify-between gap-2">
           <h3 class="text-base font-semibold">
             {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
