@@ -152,3 +152,36 @@ test("dashboard: screenshots claro y oscuro del panel con el widget", async ({ p
   await page.waitForTimeout(300);
   await page.screenshot({ path: "e2e/artifacts/panel-oscuro.png" });
 });
+
+test("dashboard: editar permite cambiar el teléfono (PATCH con E.164)", async ({ page }) => {
+  await page.route("**/api/estados*", (route) =>
+    route.fulfill({ json: [{ estado: "pendiente", label: "Pendiente", color: "#94a3b8" }] }),
+  );
+  await page.route("**/api/reservas*", (route) => route.fulfill({ json: [RESERVA] }));
+
+  let patchTelefono: string | undefined;
+  await page.route("**/api/reservas/1", async (route) => {
+    if (route.request().method() === "PATCH") {
+      patchTelefono = route.request().postDataJSON().telefono;
+      return route.fulfill({ json: RESERVA });
+    }
+    return route.fulfill({ json: RESERVA });
+  });
+
+  await page.goto("/static/calendar/index.html");
+  // La reserva existente aparece como evento; click la abre en edición.
+  const evento = page.getByText("Ana Ruiz").first();
+  await expect(evento).toBeVisible();
+  await evento.click();
+  await expect(page.getByText("Reserva Nº 1")).toBeVisible();
+
+  const input = page.locator(".iti__tel-input");
+  await expect(input).toBeEnabled(); // ← hoy falla: está disabled
+
+  // Cambiar el teléfono: limpiar y escribir otro número nacional.
+  await input.fill("");
+  await input.pressSequentially("91155550000");
+
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  expect(patchTelefono).toBe("+5491155550000");
+});

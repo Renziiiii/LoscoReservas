@@ -154,7 +154,11 @@
     try {
       const cuerpo = JSON.stringify({
         nombre: draft.nombre,
-        ...(modo === "crear" ? { telefono: draft.telefono } : {}),
+        // El teléfono viaja siempre: POST en creación y PATCH en edición —
+        // todos los datos del panel son modificables (FIX: el teléfono
+        // quedó read-only sin un porqué; el backend ya lo acepta y
+        // normaliza al E.164).
+        telefono: draft.telefono,
         fecha: draft.fecha,
         hora: draft.hora,
         personas: draft.personas,
@@ -342,7 +346,7 @@ los paneles quedan pegados entre sí y a los bordes, esquinas rectas. -->
           </label>
           <label class="col-span-2 flex flex-col gap-1">
             <span class="text-muted">Teléfono</span>
-            <InputTelefono bind:value={draft.telefono} disabled={modo === "editar"} />
+            <InputTelefono bind:value={draft.telefono} />
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-muted">Fecha</span>
