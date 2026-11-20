@@ -9,6 +9,8 @@
    * por el evento appContext que Chatwoot publica en el window. Es el
    * mismo mecanismo que usa el iframe de formularios (/iframe/app).
    */
+  let leyenda = $state<Estado[]>(ESTADOS);
+
   import { onDestroy, onMount } from "svelte";
   import { fade } from "svelte/transition";
   import dayGridPlugin from "fullcalendar/daygrid";
@@ -20,6 +22,7 @@
   import FullCalendarHost from "./FullCalendarHost.svelte";
   import InputTelefono from "./InputTelefono.svelte";
   import {
+    estiloEstado,
     atenuarColor,
     coloresEstado,
     cargarEstados,
@@ -53,15 +56,17 @@
   /** "editar" con la reserva clickeada, "crear" con fecha/hora precargadas. */
   let modo = $state<"editar" | "crear" | null>(null);
   /** Borrador editable del panel: sólo viaja al backend al guardar. */
-  let draft = $state({
-    nombre: "",
-    fecha: "",
-    hora: "",
-    personas: 2,
-    estado: "pendiente" as Estado,
-    detalles: "",
-    enviar_recordatorio: true,
-  } | null);
+  let draft = $state(
+    {
+      nombre: "",
+      fecha: "",
+      hora: "",
+      personas: 2,
+      estado: "pendiente" as Estado,
+      detalles: "",
+      enviar_recordatorio: true,
+    } | null,
+  );
   let guardando = $state(false);
   /** Estados configurados (T5): el fallback base hasta que la llamada a
    * /iframe/estados.json llegue.Se referencia en la derivación de
@@ -159,11 +164,14 @@
   }
 
   async function reprogramar(id: number, fecha: string, hora: string) {
-    const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fecha, hora }),
-    });
+    const res = await fetch(
+      `/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fecha, hora }),
+      },
+    );
     if (res.ok) {
       await cargar();
       // Si la reserva editada está abierta en el panel, refrescala con lo nuevo.
@@ -201,9 +209,10 @@
         detalles: draft.detalles || null,
         enviar_recordatorio: draft.enviar_recordatorio,
       });
-      const url = modo === "crear"
-        ? `/iframe/reservas.json?key=${encodeURIComponent(key)}`
-        : `/iframe/reservas/${seleccionada?.id}.json?key=${encodeURIComponent(key)}`;
+      const url =
+        modo === "crear"
+          ? `/iframe/reservas.json?key=${encodeURIComponent(key)}`
+          : `/iframe/reservas/${seleccionada?.id}.json?key=${encodeURIComponent(key)}`;
       const res = await fetch(url, {
         method: modo === "crear" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -222,7 +231,10 @@
             return campo ? `${campo}: ${e.msg ?? ""}` : (e.msg ?? "");
           })
           .filter(Boolean);
-        avisar(msjs.length ? msjs.join(" · ") : `error al guardar (${res.status})`, "err");
+        avisar(
+          msjs.length ? msjs.join(" · ") : `error al guardar (${res.status})`,
+          "err",
+        );
       }
     } catch {
       avisar("sin conexión con la API", "err");
@@ -243,7 +255,10 @@
     guardando = true;
     const id = seleccionada.id;
     try {
-      const res = await fetch(`/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+      const res = await fetch(
+        `/iframe/reservas/${id}.json?key=${encodeURIComponent(key)}`,
+        { method: "DELETE" },
+      );
       if (res.status === 204) {
         avisar(`reserva #${id} eliminada`);
         cerrar();
@@ -258,7 +273,9 @@
     }
   }
 
-  /** appContext: Chatwoot avisa el contacto de la conversación abierta. */  function onMessage(ev: MessageEvent) {
+  /** appContext: Chatwoot avisa el contacto de la conversación abierta. */ function onMessage(
+    ev: MessageEvent,
+  ) {
     let data: any;
     try {
       data = typeof ev.data === "string" ? JSON.parse(ev.data) : ev.data;
@@ -280,7 +297,17 @@
    * y la descripción visible en preview (2ª línea truncada), sin entrar al
    * evento. HTML escapado a mano: nombre/detalles son texto de clientes. */
   function esc(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+    return s.replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c]!,
+    );
   }
 
   function eventContent(info: any) {
@@ -298,11 +325,20 @@
   }
 
   const options = $derived.by<CalendarOptions>(() => ({
-    plugins: [timeGridPlugin, dayGridPlugin, interactionPlugin, formaThemePlugin],
+    plugins: [
+      timeGridPlugin,
+      dayGridPlugin,
+      interactionPlugin,
+      formaThemePlugin,
+    ],
     locales: [esLocale],
     locale: "es",
     initialView: "timeGridWeek",
-    headerToolbar: { left: "prev,next today", center: "title", right: "timeGridWeek,timeGridDay,dayGridMonth" },
+    headerToolbar: {
+      left: "prev,next today",
+      center: "title",
+      right: "timeGridWeek,timeGridDay,dayGridMonth",
+    },
     buttonText: { today: "Hoy", week: "Semana", day: "Día", month: "Mes" },
     // Sidebar de Chatwoot: angosta. Sin slot de all-day, media hora por fila,
     // altura fija con scroll interno, abre a la tarde (hora pico del bar).
@@ -373,7 +409,9 @@
     window.addEventListener("message", onMessage);
     // T5: la lista configurable alimenta el select del panel y los
     // colores; el fallback base cubre el fallo del fetch.
-    if (await cargarEstados(`/iframe/estados.json?key=${encodeURIComponent(key)}`)) {
+    if (
+      await cargarEstados(`/iframe/estados.json?key=${encodeURIComponent(key)}`)
+    ) {
       listaEstados = nombresDeEstados();
     }
     pollTimer = setInterval(cargar, POLL_MS);
@@ -387,116 +425,159 @@
   });
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-{#if toast}
-  <div
-    class="px-3 py-1.5 text-xs {toast.tipo === 'ok' ? 'text-ok-text bg-ok-surface' : 'text-danger-text bg-danger-surface'}"
-    role="status"
-    transition:fade
-  >{toast.texto}</div>
-{/if}
-
-{#if draft}
-  <!-- L15: flush contra el borde (L65), el usuario pidió un margen —
-  separa el panel del calendario; los inputs llevan su propio padding. -->
-  <div class="border border-line rounded bg-surface my-2 mx-2">
-    <div class="flex items-baseline justify-between gap-2">
-      <h3 class="text-sm font-semibold">
-        {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
-        {#if modo === "editar"} · {seleccionada?.telefono}{/if}
-      </h3>
-      <button
-        type="button"
-        class="text-xs rounded px-2 py-0.5 border border-line-strong hover:bg-surface-hover text-muted"
-        onclick={cerrar}
-      >Cerrar</button>
-    </div>
-    <form
-      class="mt-2 grid grid-cols-2 gap-2 text-xs"
-      onsubmit={(e) => { e.preventDefault(); guardar(); }}
-    >
-      <label class="col-span-2 flex flex-col gap-0.5">
-        <span class="text-muted">Nombre</span>
-        <input
-          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-          type="text"
-          bind:value={draft.nombre}
-          required
-        />
-      </label>
-      <!-- for= al input tel: ver nota en App.svelte — un <label> que
-      envuelve al widget reenvía el click al botón de la banderita. -->
-      <label class="col-span-2 flex flex-col gap-0.5" for="tel-iframe">
-        <span class="text-muted">Teléfono</span>
-        <InputTelefono bind:value={telefono} inputId="tel-iframe" />
-        {#if !telefono}
-          <span class="text-muted">
-            El contacto no tiene teléfono en Chatwoot — elegí el país y anotá
-            el número (ej: 9 321 098 7654); queda registrado también en su
-            contacto.
-          </span>
-        {/if}
-      </label>
-      <label class="flex flex-col gap-0.5">
-        <span class="text-muted">Fecha</span>
-        <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="date" bind:value={draft.fecha} required />
-      </label>
-      <label class="flex flex-col gap-0.5">
-        <span class="text-muted">Hora</span>
-        <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="time" bind:value={draft.hora} required />
-      </label>
-      <label class="flex flex-col gap-0.5">
-        <span class="text-muted">Personas</span>
-        <input
-          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-          type="number"
-          min="1"
-          max="200"
-          bind:value={draft.personas}
-          required
-        />
-      </label>
-      <label class="flex flex-col gap-0.5">
-        <span class="text-muted">Estado</span>
-        <select class="rounded border border-line-strong bg-surface text-fg px-2 py-1" bind:value={draft.estado}>
-          {#each listaEstados as e}
-            <option value={e}>{nombreDeEstado(e)}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="col-span-2 flex flex-col gap-0.5">
-        <span class="text-muted">Detalles</span>
-        <input
-          class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-          type="text"
-          bind:value={draft.detalles}
-          placeholder="ej. cumpleaños, mesa cerca de la ventana…"
-        />
-      </label>
-      <label class="col-span-2 flex items-center gap-2">
-        <input type="checkbox" bind:checked={draft.enviar_recordatorio} />
-        <span class="text-muted">Enviar recordatorio por WhatsApp</span>
-      </label>
-      <div class="col-span-2 flex gap-2">
-        <button
-          type="submit"
-          class="flex-1 rounded bg-brand px-2 py-1.5 font-medium text-on-brand hover:bg-brand-hover disabled:opacity-50"
-          disabled={guardando}
-        >{guardando ? "Guardando…" : modo === "crear" ? "Crear reserva" : "Guardar"}</button>
-        {#if modo === "editar"}
-          <button
-            type="button"
-            class="rounded border px-2 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar ? 'border-danger bg-danger text-on-brand' : 'border-danger-soft bg-danger-surface text-danger-text hover:bg-danger-soft'}"
-            onclick={eliminar}
-            disabled={guardando}
-          >{confirmandoEliminar ? "¿Seguro? Click de nuevo" : "Eliminar"}</button>
-        {/if}
-      </div>
-    </form>
-  </div>
-{/if}
-
-<div class="min-h-0 flex-1">
-  <FullCalendarHost {options} bind:cal />
+<div
+  class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 border-b border-line-weak"
+>
+  {#each leyenda as estado}
+    <span class="inline-flex items-center gap-1.5 text-xs text-muted">
+      <i
+        class="w-3 h-3 rounded-sm inline-block"
+        style="background: {estiloEstado(estado).bg}"
+      ></i>{estiloEstado(estado).label}
+    </span>
+  {/each}
 </div>
+<div class="flex h-full flex-col overflow-hidden">
+  {#if toast}
+    <div
+      class="px-3 py-1.5 text-xs {toast.tipo === 'ok'
+        ? 'text-ok-text bg-ok-surface'
+        : 'text-danger-text bg-danger-surface'}"
+      role="status"
+      transition:fade
+    >
+      {toast.texto}
+    </div>
+  {/if}
+
+  {#if draft}
+    <!-- L15: flush contra el borde (L65), el usuario pidió un margen —
+  separa el panel del calendario; los inputs llevan su propio padding. -->
+    <div class="border border-line rounded bg-surface my-2 mx-2">
+      <div class="flex items-baseline justify-between gap-2">
+        <h3 class="text-sm font-semibold">
+          {#if modo === "crear"}Nueva reserva{:else}Reserva Nº {seleccionada?.id}{/if}
+          {#if modo === "editar"}
+            · {seleccionada?.telefono}{/if}
+        </h3>
+        <button
+          type="button"
+          class="text-xs rounded px-2 py-0.5 border border-line-strong hover:bg-surface-hover text-muted"
+          onclick={cerrar}>Cerrar</button
+        >
+      </div>
+      <form
+        class="mt-2 grid grid-cols-2 gap-2 text-xs"
+        onsubmit={(e) => {
+          e.preventDefault();
+          guardar();
+        }}
+      >
+        <label class="col-span-2 flex flex-col gap-0.5">
+          <span class="text-muted">Nombre</span>
+          <input
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            type="text"
+            bind:value={draft.nombre}
+            required
+          />
+        </label>
+        <!-- for= al input tel: ver nota en App.svelte — un <label> que
+      envuelve al widget reenvía el click al botón de la banderita. -->
+        <label class="col-span-2 flex flex-col gap-0.5" for="tel-iframe">
+          <span class="text-muted">Teléfono</span>
+          <InputTelefono bind:value={telefono} inputId="tel-iframe" />
+          {#if !telefono}
+            <span class="text-muted">
+              El contacto no tiene teléfono en Chatwoot — elegí el país y anotá
+              el número (ej: 9 321 098 7654); queda registrado también en su
+              contacto.
+            </span>
+          {/if}
+        </label>
+        <label class="flex flex-col gap-0.5">
+          <span class="text-muted">Fecha</span>
+          <input
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            type="date"
+            bind:value={draft.fecha}
+            required
+          />
+        </label>
+        <label class="flex flex-col gap-0.5">
+          <span class="text-muted">Hora</span>
+          <input
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            type="time"
+            bind:value={draft.hora}
+            required
+          />
+        </label>
+        <label class="flex flex-col gap-0.5">
+          <span class="text-muted">Personas</span>
+          <input
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            type="number"
+            min="1"
+            max="200"
+            bind:value={draft.personas}
+            required
+          />
+        </label>
+        <label class="flex flex-col gap-0.5">
+          <span class="text-muted">Estado</span>
+          <select
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            bind:value={draft.estado}
+          >
+            {#each listaEstados as e}
+              <option value={e}>{nombreDeEstado(e)}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="col-span-2 flex flex-col gap-0.5">
+          <span class="text-muted">Detalles</span>
+          <input
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
+            type="text"
+            bind:value={draft.detalles}
+            placeholder="ej. cumpleaños, mesa cerca de la ventana…"
+          />
+        </label>
+        <label class="col-span-2 flex items-center gap-2">
+          <input type="checkbox" bind:checked={draft.enviar_recordatorio} />
+          <span class="text-muted">Enviar recordatorio por WhatsApp</span>
+        </label>
+        <div class="col-span-2 flex gap-2">
+          <button
+            type="submit"
+            class="flex-1 rounded bg-brand px-2 py-1.5 font-medium text-on-brand hover:bg-brand-hover disabled:opacity-50"
+            disabled={guardando}
+            >{guardando
+              ? "Guardando…"
+              : modo === "crear"
+                ? "Crear reserva"
+                : "Guardar"}</button
+          >
+          {#if modo === "editar"}
+            <button
+              type="button"
+              class="rounded border px-2 py-1.5 font-medium disabled:opacity-50 {confirmandoEliminar
+                ? 'border-danger bg-danger text-on-brand'
+                : 'border-danger-soft bg-danger-surface text-danger-text hover:bg-danger-soft'}"
+              onclick={eliminar}
+              disabled={guardando}
+              >{confirmandoEliminar
+                ? "¿Seguro? Click de nuevo"
+                : "Eliminar"}</button
+            >
+          {/if}
+        </div>
+      </form>
+    </div>
+  {/if}
+
+  <div class="min-h-0 flex-1">
+    <FullCalendarHost {options} bind:cal />
+  </div>
 </div>
