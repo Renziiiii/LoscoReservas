@@ -25,7 +25,7 @@ from app.chatwoot import ChatwootClient, variables_plantilla
 from app.config import Settings
 from app.db import get_session
 from app.etiquetas import migrar_etiqueta, sincronizar_estado_reserva
-from app.estados import estado_valido, mapa_etiquetas
+from app.estados import color_desde_paleta, estado_valido, mapa_etiquetas, normalizar_color
 from app.models import EstadoReserva, Reserva
 from app.schemas import ReservaCreate
 from app.scheduler import parse_hora, reprogramar
@@ -438,12 +438,18 @@ async def ajustes_tags_guardar(
         nueva = str(form.get(f"etiqueta_{slug}") or "").strip() or None
         estado.nombre = nombre
         estado.etiqueta_chatwoot = nueva
+        if f"color_{slug}" in form:
+            try:
+                estado.color = normalizar_color(form.get(f"color_{slug}"))
+            except HTTPException:
+                return _redirect_tags(error="Hay un color inválido: usá el selector de color.")
         if vieja and nueva and vieja != nueva:
             cambios_etiqueta.append((estado, vieja))
 
     # 2) altas nuevas (filas agregadas por el botón + Nuevo estado)
     nombres = [n.strip() for n in form.getlist("nuevo_nombre")]
     etiquetas = form.getlist("nuevo_etiqueta")
+    colores_nuevos = form.getlist("nuevo_color")
     for i, nombre in enumerate(nombres):
         if not nombre or len(nombre) > 60:
             return _redirect_tags(error="El nombre del estado es obligatorio (máx 60 caracteres).")
@@ -451,8 +457,14 @@ async def ajustes_tags_guardar(
         if session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug)):
             return _redirect_tags(error=f"Ya existe el estado '{slug}'.")
         etiqueta = str(etiquetas[i] if i < len(etiquetas) else "").strip() or None
+        try:
+            color = normalizar_color(str(colores_nuevos[i] if i < len(colores_nuevos) else ""))
+        except HTTPException:
+            return _redirect_tags(error="Hay un color inválido: usá el selector de color.")
+        # Nuevo estado sin color elegido: uno de la paleta libre (S3).
         session.add(EstadoReserva(nombre=nombre, slug=slug,
-                                  etiqueta_chatwoot=etiqueta))
+                                  etiqueta_chatwoot=etiqueta,
+                                  color=color or color_desde_paleta(session)))
     session.commit()
 
     # 3) migración de etiqueta: solo si UNA etiqueta cambió (el flujo de

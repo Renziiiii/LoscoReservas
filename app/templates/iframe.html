@@ -90,7 +90,7 @@
         <td>{{ r.fecha.strftime("%d/%m/%Y") }}</td>
         <td>{{ r.hora.strftime("%H:%M") }}</td>
         <td>{{ r.personas }}</td>
-        <td><span class="estado {{ r.estado }}">{{ r.estado }}</span></td>
+        <td>{% if colores.get(r.estado) %}<span class="estado {{ r.estado }}" style="color: {{ colores[r.estado] }}; background: {{ colores[r.estado] }}33;">{{ r.estado }}</span>{% else %}<span class="estado {{ r.estado }}">{{ r.estado }}</span>{% endif %}</td>
         <td>{{ r.detalles or "" }}</td>
       </tr>
       {% endfor %}

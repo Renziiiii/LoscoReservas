@@ -286,9 +286,14 @@ def iframe_reservas(
     headers = {"Content-Security-Policy": _frame_ancestors(settings)}
     if not _autorizado(request, key):
         return HTMLResponse("Forbidden", status_code=403, headers=headers)
+    # Colores personalizables (tags-color): el estado configurado pinta su
+    # color inline; NULL cae al CSS fijo por clase (backfill lo evita).
+    colores = dict(session.execute(
+        select(EstadoReserva.slug, EstadoReserva.color)
+    ).all())
     return _templates.TemplateResponse(
         request,
         "iframe.html",
-        {"reservas": _por_telefono(session, tel)},
+        {"reservas": _por_telefono(session, tel), "colores": colores},
         headers=headers,
     )

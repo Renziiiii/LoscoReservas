@@ -43,6 +43,10 @@ solo: editá todas las tarjetas y apretá Guardar al final.</p>
       <label class="flex flex-col gap-1 text-sm text-muted">Etiqueta de Chatwoot (vacío = no sincronizar)
         <select name="etiqueta_{{ estado.slug }}" class="sel-etiqueta rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand" data-valor="{{ estado.etiqueta_chatwoot or '' }}"></select>
       </label>
+      <label class="flex flex-col gap-1 text-sm text-muted">Color
+        <input type="color" name="color_{{ estado.slug }}" value="{{ estado.color or '#6366f1' }}"
+          class="h-9 w-16 cursor-pointer rounded-lg border border-line-strong bg-surface p-0.5">
+      </label>
     </div>
     <button class="mt-3 inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-danger hover:bg-surface-hover" type="submit"
       formaction="/ajustes/tags/{{ estado.slug }}/eliminar" formmethod="post"
@@ -61,6 +65,10 @@ solo: editá todas las tarjetas y apretá Guardar al final.</p>
         </label>
         <label class="flex flex-col gap-1 text-sm text-muted">Etiqueta de Chatwoot
           <select name="nuevo_etiqueta" class="sel-etiqueta nuevo rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand" data-valor=""></select>
+        </label>
+        <label class="flex flex-col gap-1 text-sm text-muted">Color
+          <input type="color" name="nuevo_color" value="#6366f1"
+            class="h-9 w-16 cursor-pointer rounded-lg border border-line-strong bg-surface p-0.5">
         </label>
       </div>
       <button class="mt-3 inline-flex cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3.5 py-1.5 font-medium text-fg hover:bg-surface-hover" type="button" onclick="this.closest('fieldset').remove()">Quitar</button>
@@ -128,6 +136,11 @@ solo: editá todas las tarjetas y apretá Guardar al final.</p>
       });
       document.getElementById('agregar-estado').addEventListener('click', function () {
         var clon = document.getElementById('tpl-nuevo-estado').content.cloneNode(true);
+        // Color inicial aleatorio de la paleta, igual que haría el backend;
+        // el usuario lo ajusta antes de Guardar.
+        var PALETA = ['#6366f1', '#0ea5e9', '#a855f7', '#f97316', '#14b8a6', '#ec4899'];
+        clon.querySelector('input[type="color"]').value =
+          PALETA[Math.floor(Math.random() * PALETA.length)];
         this.before(clon);
         conectarNuevos(lista);
       });

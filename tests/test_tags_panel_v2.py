@@ -202,3 +202,74 @@ def test_tags_page_un_form_un_boton_eliminar_por_tarjeta(client):
     # design-tokens S5: el select lleva utilities además del hook JS.
     assert re.search(r'<select[^>]*class="[^"]*sel-etiqueta', html)
     assert 'name="nombre_confirmada"' in html
+
+
+# --- colores personalizables desde el panel (tags-color) ---
+
+def test_tags_page_tiene_input_color_por_estado(client):
+    """S5: cada tarjeta muestra un input de color precargado y el form de
+    nuevo estado también."""
+    html = client.get("/ajustes/tags").text
+    assert 'type="color" name="color_pendiente"' in html
+    assert 'type="color" name="color_confirmada"' in html
+    assert 'type="color" name="color_cancelada"' in html
+    assert 'name="nuevo_color"' in html
+
+
+def test_guardar_batch_persiste_colores(client):
+    """S5: Guardar persiste color_<slug> junto a nombre/etiqueta."""
+    resp = client.post(
+        "/ajustes/tags/guardar",
+        data={
+            "nombre_confirmada": "Confirmada", "etiqueta_confirmada": "",
+            "color_confirmada": "#123456",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    assert estados["confirmada"]["color"] == "#123456"
+
+
+def test_guardar_nuevo_estado_con_y_sin_color(client):
+    """S3 (panel): estado nuevo con color explícito lo respeta; sin color
+    recibe uno de la paleta."""
+    resp = client.post(
+        "/ajustes/tags/guardar",
+        data={
+            "nombre_pendiente": "Pendiente", "etiqueta_pendiente": "",
+            "color_pendiente": "#f0a500",
+            "nuevo_nombre": "Demorada", "nuevo_etiqueta": "", "nuevo_color": "#abcdef",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    assert estados["demorada"]["color"] == "#abcdef"
+
+    resp = client.post(
+        "/ajustes/tags/guardar",
+        data={
+            "nombre_pendiente": "Pendiente", "etiqueta_pendiente": "",
+            "color_pendiente": "#f0a500",
+            "nuevo_nombre": "En Sala", "nuevo_etiqueta": "", "nuevo_color": "",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    import re as _re
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    assert _re.fullmatch(r"#[0-9a-f]{6}", estados["en-sala"]["color"] or "")
+
+
+def test_guardar_color_invalido_rechazado(client):
+    resp = client.post(
+        "/ajustes/tags/guardar",
+        data={"nombre_pendiente": "Pendiente", "etiqueta_pendiente": "",
+              "color_pendiente": "<script>"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "error" in resp.headers.get("location", "")
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    assert estados["pendiente"]["color"] != "<script>"

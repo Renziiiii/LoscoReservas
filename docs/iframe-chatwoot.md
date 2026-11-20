@@ -39,6 +39,15 @@ el campo `theme` del `appContext`, que tiene prioridad sobre la media query.
 Chatwoot reenvía el `appContext` cuando el agente cambia de modo, así que el
 iframe cambia de tema en vivo sin recargar.
 
+Los colores de los estados de reserva son **configurables** (Ajustes > Tags):
+se guardan en la tabla `estados_reserva` y los tres frentes los respetan — el
+calendario Svelte (`web/src/lib/reservas.ts`), la pestaña de Chatwoot
+(`/iframe/estados.json` + estilo inline en cada badge) y la página HTML
+directa del iframe (server-render con el mismo estilo inline). Estados sin
+color guardado caen al CSS fijo por clase; el backfill de arranque les asigna
+uno de la paleta, y los estados nuevos sin color elegido reciben uno aleatorio
+no usado de la paleta.
+
 La clave viaja en la URL de la página configurada y se reutiliza para el
 fetch de datos; no se hardcodea en el fuente. Sin clave configurada, todo
 responde 403 (fail-closed).

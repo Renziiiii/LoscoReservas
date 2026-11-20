@@ -255,3 +255,95 @@ def test_post_ajustes_ignora_campo_etiqueta_viejo(client):
         config = session.get(Configuracion, 1)
         assert config.plantilla_confirmacion == "conf_losco"
         assert config.etiqueta_confirmada == "Reserva confirmada"
+
+
+# --- colores personalizables de los estados (tags-color) ---
+
+import re as _re
+
+_COLORES_BASE = {
+    "pendiente": "#f0a500",
+    "confirmada": "#00b877",
+    "cancelada": "#e54666",
+}
+
+
+def test_seeds_base_tienen_color_fijo(client):
+    """S1: los 3 estados base siembran con su color de siempre (ámbar,
+    verde, rojo) — ya no dependen del CSS del cliente."""
+    estados = {row["slug"]: row for row in client.get("/api/estados").json()}
+    for slug, color in _COLORES_BASE.items():
+        assert estados[slug]["color"] == color, slug
+
+
+def test_backfill_colores_null(tmp_path):
+    """S2: boot con datos existentes — base con color NULL recupera su color
+    de siempre; custom NULL recibe el color de la paleta por hash (el mismo
+    que el cliente ya mostraba). Idempotente y nunca pisa un color guardado."""
+    from app.estados import backfill_colores
+    from app.config import Settings
+    from app.main import create_app
+    from fastapi.testclient import TestClient
+
+    settings = Settings(
+        database_path=tmp_path / "reservas.db",
+        users="valen:testpass123",
+        jwt_secret="test-secret-0123456789abcdef0123456789abcdef",
+        _env_file=None,
+    )
+    app = create_app(settings)
+    with TestClient(app):
+        with app.state.sessionmaker() as session:
+            session.add(EstadoReserva(nombre="Demorada", slug="demorada"))
+            session.commit()
+        with app.state.sessionmaker() as session:
+            session.query(EstadoReserva).update({"color": None})
+            session.commit()
+
+        backfill_colores(app.state.engine)
+        with app.state.sessionmaker() as session:
+            colores = {e.slug: e.color for e in session.query(EstadoReserva)}
+        assert colores["pendiente"] == "#f0a500"
+        assert colores["confirmada"] == "#00b877"
+        assert colores["cancelada"] == "#e54666"
+        assert colores["demorada"] == "#ec4899"  # paleta[hash('demorada')%6]
+
+        # idempotente y no pisa colores guardados
+        with app.state.sessionmaker() as session:
+            session.query(EstadoReserva).filter_by(slug="pendiente").update({"color": "#123abc"})
+            session.commit()
+        backfill_colores(app.state.engine)
+        with app.state.sessionmaker() as session:
+            colores = {e.slug: e.color for e in session.query(EstadoReserva)}
+        assert colores["pendiente"] == "#123abc"
+        assert colores["demorada"] == "#ec4899"
+
+
+def test_crud_crear_sin_color_asigna_de_la_paleta(client):
+    """S3: crear un estado sin color le asigna uno de la paleta (hex válido).
+    Dos estados nuevos no comparten color mientras queden libres."""
+    uno = client.post("/api/estados", json={"nombre": "A Reconfirmar"})
+    dos = client.post("/api/estados", json={"nombre": "En Sala"})
+    assert uno.status_code == 201 and dos.status_code == 201
+    for body in (uno.json(), dos.json()):
+        assert body["color"] and _re.fullmatch(r"#[0-9a-f]{6}", body["color"])
+    assert uno.json()["color"] != dos.json()["color"]
+
+
+def test_crud_crear_con_color_explicito(client):
+    resp = client.post("/api/estados", json={"nombre": "VIP", "color": "#AABBCC"})
+    assert resp.status_code == 201
+    assert resp.json()["color"] == "#aabbcc"  # normalizado a minúsculas
+
+
+def test_crud_crear_color_invalido_rechazado(client):
+    resp = client.post("/api/estados", json={"nombre": "Raro", "color": "javascript:alert(1)"})
+    assert resp.status_code == 422
+
+
+def test_crud_editar_color(client):
+    resp = client.patch("/api/estados/cancelada", json={"color": "#0000ff"})
+    assert resp.status_code == 200
+    assert resp.json()["color"] == "#0000ff"
+    resp2 = client.patch("/api/estados/cancelada", json={"color": "no-es-un-color"})
+    assert resp2.status_code == 422

@@ -102,6 +102,7 @@
     .estado.pendiente { color: var(--warn); background: var(--warn-bg); }
     .estado.confirmada { color: var(--ok); background: var(--ok-bg); }
     .estado.cancelada { color: var(--danger); background: var(--danger-bg); text-decoration: line-through; }
+    /* Color configurable pisa la clase: inline style lo resuelve sin tocar el CSS. */
     form {
       background: var(--surface);
       border: 1px solid var(--border-subtle);
@@ -228,6 +229,13 @@
     let contactPhone = "";
     let contactId = null;
     let editingId = null;
+    // Colores configurables (tags-color): slug -> color de /iframe/estados.json.
+    let coloresEstadoMap = {};
+    let coloresEstadoCargados = false;
+    let nombresEstadoMap = {};
+    function nombreEstado(slug) {
+      return nombresEstadoMap[slug] || slug;
+    }
 
     window.addEventListener("message", (event) => {
       let data = event.data;
@@ -311,16 +319,37 @@
 
     function cargarReservas() {
       document.getElementById("estado").textContent = "Cargando reservas…";
-      fetch("/iframe/reservas.json?tel=" + encodeURIComponent(telActual) + "&key=" + encodeURIComponent(key))
-        .then((r) => {
-          if (!r.ok) throw new Error("HTTP " + r.status);
-          return r.json();
-        })
-        .then((reservas) => renderTabla(reservas))
+      // Colores configurables: los estados (con su color) llegan de
+      // /iframe/estados.json; si falla, el badge cae a la clase CSS fija.
+      const promesas = [
+        fetch("/iframe/reservas.json?tel=" + encodeURIComponent(telActual) + "&key=" + encodeURIComponent(key))
+          .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+      ];
+      if (!coloresEstadoCargados) {
+        promesas.push(
+          fetch("/iframe/estados.json?key=" + encodeURIComponent(key))
+            .then((r) => (r.ok ? r.json() : []))
+            .then((filas) => {
+              for (const f of filas || []) {
+                if (f && f.slug && typeof f.color === "string") coloresEstadoMap[f.slug] = f.color;
+                if (f && f.slug && typeof f.nombre === "string") nombresEstadoMap[f.slug] = f.nombre;
+              }
+              coloresEstadoCargados = true;
+            })
+            .catch(() => {})
+        );
+      }
+      Promise.all(promesas)
+        .then(([reservas]) => renderTabla(reservas))
         .catch(() => {
           document.getElementById("estado").textContent =
             "No se pudieron cargar las reservas.";
         });
+    }
+
+    function estiloColorEstado(slug) {
+      const color = coloresEstadoMap[slug];
+      return color ? ` style="color: ${color}; background: ${color}33;"` : "";
     }
 
     function renderTabla(reservas) {
@@ -337,7 +366,7 @@
           <td>${fechaAr(r.fecha)}</td>
           <td>${r.hora}</td>
           <td>${r.personas}</td>
-          <td><span class="estado ${esc(r.estado)}">${esc(r.estado)}</span></td>
+          <td><span class="estado ${esc(r.estado)}"${estiloColorEstado(r.estado)}>${esc(nombreEstado(r.estado))}</span></td>
           <td>${esc(r.detalles || "")}</td>
           <td class="actions">
             <button type="button" data-edit="${r.id}" aria-label="Editar">✏️</button>

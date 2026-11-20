@@ -50,6 +50,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _asegurar_columna_etiqueta(engine)
         _asegurar_columna_tag_disparadora(engine)
         asegurar_estados(engine, settings)
+        from app.estados import backfill_colores
+        backfill_colores(engine)
         if settings.scheduler_enabled:
             from app.scheduler import build_scheduler
 

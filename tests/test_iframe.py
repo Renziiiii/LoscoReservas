@@ -818,3 +818,42 @@ def test_iframe_app_warns_on_argentine_number_without_9(tmp_path):
         assert "351 260-2003" not in text
         # cancelling the dialog aborts the submit without disabling the button
         assert "!window.confirm" in text
+
+
+# --- colores configurados en el render del iframe (tags-color) ---
+
+from datetime import date as _date, time as _time
+
+from app.models import EstadoReserva as _EstadoReserva, Reserva as _Reserva
+
+
+def _crear_estado_colorado(app, slug, color):
+    with app.state.sessionmaker() as session:
+        session.add(_EstadoReserva(nombre=slug.capitalize(), slug=slug, color=color))
+        session.commit()
+
+
+def test_iframe_reservas_pinta_color_configurado(tmp_path):
+    """S6: la página HTML del iframe usa el color configurado del estado
+    (inline style), no el CSS fijo por clase."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _crear_estado_colorado(app, "demorada", "#123456")
+        with app.state.sessionmaker() as session:
+            session.add(_Reserva(nombre="Nadie", telefono="+5491112223334",
+                                 fecha=_date(2026, 3, 20), hora=_time(21, 0),
+                                 personas=2, estado="demorada"))
+            session.commit()
+        resp = client.get("/iframe/reservas?tel=%2B5491112223334&key=" + EMBED_KEY)
+        assert resp.status_code == 200
+        assert "color:#123456" in resp.text or "color: #123456" in resp.text
+
+
+def test_iframe_app_incluye_logica_de_colores(tmp_path):
+    """S6: iframe_app.html carga /iframe/estados.json y aplica el color
+    configurado inline sobre el badge del estado."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        html = client.get("/iframe/app?key=" + EMBED_KEY).text
+        assert "estados.json" in html
+        assert "estiloColorEstado" in html

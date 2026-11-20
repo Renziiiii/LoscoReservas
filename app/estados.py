@@ -15,6 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+import random
+import re as _re
+
 from app.ajustes import obtener_configuracion
 from app.config import Settings
 from app.db import get_session
@@ -25,6 +28,20 @@ router = APIRouter(prefix="/api/estados", tags=["estados"])
 # Seed rows in display order. `confirmada` inherits the current value of the
 # legacy `etiqueta_confirmada` column on first boot (T15-style migration for
 # existing databases; a fresh install seeds with Settings' default).
+# Colors: base states seed with their historical palette colors so the stored
+# `color` is the single source of truth (colores personalizables).
+_COLORES_BASE = {
+    "pendiente": "#f0a500",
+    "confirmada": "#00b877",
+    "cancelada": "#e54666",
+}
+
+# Same palette and order as web/src/lib/reservas.ts — hash-derived colors
+# must match what clients already showed before colors were stored.
+_PALETA = (
+    "#6366f1", "#0ea5e9", "#a855f7", "#f97316", "#14b8a6", "#ec4899",
+)
+
 _SEEDS = (
     ("Pendiente", "pendiente", True, None),
     ("Confirmada", "confirmada", True, "__etiqueta_confirmada__"),
@@ -46,8 +63,65 @@ def asegurar_estados(engine, settings: Settings) -> None:
                 etiqueta = config.etiqueta_confirmada
             session.add(EstadoReserva(nombre=nombre, slug=slug,
                                       etiqueta_chatwoot=etiqueta,
+                                      color=_COLORES_BASE.get(slug),
                                       envia_recordatorio=envia, es_base=True))
         session.commit()
+
+
+def backfill_colores(engine) -> None:
+    """Idempotent color backfill for databases created before colors were
+    editable: base states with NULL recover their historical color; custom
+    states with NULL get the hash-derived palette color the client already
+    displayed (same hash as web/src/lib/reservas.ts — nothing shifts).
+    Colors already stored are never overwritten. Called from lifespan next
+    to asegurar_estados."""
+    with Session(engine) as session:
+        estados = session.scalars(select(EstadoReserva)).all()
+        cambiaron = False
+        for estado in estados:
+            if estado.color:
+                continue
+            estado.color = _COLORES_BASE.get(estado.slug) or color_por_hash(estado.slug)
+            cambiaron = True
+        if cambiaron:
+            session.commit()
+
+
+def hash_slug(slug: str) -> int:
+    """Same deterministic hash as web/src/lib/reservas.ts (h*31 + char,
+    wrapped to unsigned 32 bits)."""
+    h = 0
+    for ch in slug:
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    return h
+
+
+def color_por_hash(slug: str) -> str:
+    """The palette color the Svelte client shows for this slug today."""
+    return _PALETA[hash_slug(slug) % len(_PALETA)]
+
+
+def normalizar_color(value: str | None) -> str | None:
+    """'' / None -> None; '#RRGGBB' -> lowercase hex; anything else -> 422.
+    Only safe hex reaches the DB and the templates."""
+    texto = (value or "").strip().lower()
+    if not texto:
+        return None
+    if not _re.fullmatch(r"#[0-9a-f]{6}", texto):
+        raise HTTPException(
+            status_code=422,
+            detail="color inválido: usá el formato #rrggbb",
+        )
+    return texto
+
+
+def color_desde_paleta(session: Session) -> str:
+    """A palette color for a new state: random among the colors not used
+    yet by other states, so new tags visibly differ from day one; when the
+    palette is exhausted, any color goes."""
+    usados = set(session.scalars(select(EstadoReserva.color)))
+    libres = [c for c in _PALETA if c not in usados]
+    return random.choice(libres) if libres else random.choice(_PALETA)
 
 
 def normalizar_estado(value: str | None) -> str:
@@ -143,14 +217,15 @@ def crear_estado(
     slug = _slug_de(nombre)
     if session.scalar(select(EstadoReserva).where(EstadoReserva.slug == slug)):
         raise HTTPException(status_code=409, detail=f"ya existe el estado {slug!r}")
-    etiqueta = (payload.get("etiqueta_chatwoot") or "").strip() or None
-    if etiqueta and len(etiqueta) > 120:
+    etiqueta_chatwoot = (payload.get("etiqueta_chatwoot") or "").strip() or None
+    if etiqueta_chatwoot and len(etiqueta_chatwoot) > 120:
         raise HTTPException(status_code=422, detail="etiqueta de Chatwoot demasiado larga (máx 120)")
+    color = normalizar_color(payload.get("color")) or color_desde_paleta(session)
     estado = EstadoReserva(
         nombre=nombre,
         slug=slug,
-        etiqueta_chatwoot=etiqueta,
-        color=(payload.get("color") or "").strip() or None,
+        etiqueta_chatwoot=etiqueta_chatwoot,
+        color=color,
         envia_recordatorio=bool(payload.get("envia_recordatorio", True)),
         es_base=False,
     )
@@ -180,7 +255,7 @@ def editar_estado(slug: str, payload: dict, session: Session = Depends(get_sessi
     if "envia_recordatorio" in payload:
         estado.envia_recordatorio = bool(payload["envia_recordatorio"])
     if "color" in payload:
-        estado.color = (payload.get("color") or "").strip() or None
+        estado.color = normalizar_color(payload.get("color"))
     if "nombre" in payload:
         estado.nombre = _campo_nombre_saneado(payload["nombre"])
     session.commit()
