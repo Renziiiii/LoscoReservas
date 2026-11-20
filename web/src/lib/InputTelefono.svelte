@@ -67,4 +67,13 @@
   :global(.iti--inline-country-selector .iti__country-selector) {
     border: none; /* el recuadro lo pone .iti; el selector no duplica */
   }
+  /* El foco abraza la CAJA completa (como los inputs hermanos, donde el
+   * outline rodea el input con borde) — no el input interno sin borde,
+   * cuyo anillo quedaba desplazado ~1px adentro del recuadro. */
+  :global(.iti:focus-within) {
+    outline: auto;
+  }
+  :global(.iti:focus-within .iti__tel-input) {
+    outline: none; /* el anillo lo lleva la caja; sin duplicado */
+  }
 </style>

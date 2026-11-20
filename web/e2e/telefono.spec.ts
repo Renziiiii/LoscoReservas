@@ -185,3 +185,26 @@ test("dashboard: editar permite cambiar el teléfono (PATCH con E.164)", async (
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   expect(patchTelefono).toBe("+5491155550000");
 });
+
+test("dashboard: el foco abraza la caja del widget como en los demas inputs", async ({ page }) => {
+  await mockDashboardApi(page);
+  await page.goto("/static/calendar/index.html");
+  await page.locator(`[data-date='${RESERVA.fecha}']`).click();
+  await page.locator(".iti").waitFor();
+
+  await page.locator(".iti__tel-input").focus();
+  const tel = await page.evaluate(() => {
+    const iti = document.querySelector(".iti")!;
+    const s = getComputedStyle(iti);
+    // El anillo debe estar en la caja .iti (la que dibuja el borde).
+    return { outline: s.outlineStyle, offset: s.outlineOffset, color: s.outlineColor };
+  });
+  expect(tel.outline).not.toBe("none"); // RED: hoy el outline está en el input interno
+
+  // Y el input interno no debe duplicarlo.
+  const interno = await page.evaluate(() => {
+    const s = getComputedStyle(document.querySelector(".iti__tel-input")!);
+    return s.outlineStyle;
+  });
+  expect(interno).toBe("none");
+});
