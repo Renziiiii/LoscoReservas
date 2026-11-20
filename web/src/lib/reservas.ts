@@ -54,7 +54,11 @@ export const CAPACIDAD_MAXIMA = 100;
 export const COLORES_ESTADO: Record<string, EstiloEstado> = {
   pendiente: { bg: "#f0a500", border: "#c98a00", label: "Pendiente" },
   cancelada: { bg: "#e54666", border: "#c22b4e", label: "Cancelada" },
-  confirmada: { bg: "#00b877", border: "#009161", label: "Confirmada (oficial)" },
+  confirmada: {
+    bg: "#00b877",
+    border: "#009161",
+    label: "Confirmada (oficial)",
+  },
 };
 
 /** Fallback de estados (misma lista que siembra el backend). */
@@ -75,7 +79,8 @@ let configurados: EstadoConfig[] | null = null;
 
 function hashSlug(slug: string): number {
   let hash = 0;
-  for (let i = 0; i < slug.length; i++) hash = (hash * 31 + slug.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < slug.length; i++)
+    hash = (hash * 31 + slug.charCodeAt(i)) >>> 0;
   return hash;
 }
 
@@ -101,7 +106,8 @@ function filasNormalizadas(rows: unknown): EstadoConfig[] {
     filas.push({
       nombre: r.nombre,
       slug: r.slug,
-      etiqueta_chatwoot: typeof r.etiqueta_chatwoot === "string" ? r.etiqueta_chatwoot : null,
+      etiqueta_chatwoot:
+        typeof r.etiqueta_chatwoot === "string" ? r.etiqueta_chatwoot : null,
       color: typeof r.color === "string" ? r.color : null,
       envia_recordatorio: r.envia_recordatorio === true,
     });
@@ -128,7 +134,9 @@ export async function cargarEstados(url: string): Promise<boolean> {
 /** El nombre (label) del estado: configurado > base > el slug crudo. */
 export function nombreDeEstado(slug: string): string {
   return (
-    configurados?.find((c) => c.slug === slug)?.nombre ?? COLORES_ESTADO[slug]?.label ?? slug
+    configurados?.find((c) => c.slug === slug)?.nombre ??
+    COLORES_ESTADO[slug]?.label ??
+    slug
   );
 }
 
@@ -174,7 +182,7 @@ const GRIS = [156, 163, 175]; // gray-400
  * Se aplica como backgroundColor/borderColor inline, que FullCalendar
  * pinta por su cuenta — la distinción no depende de que cargue una
  * clase CSS utilitaria. factor 0 = color original, 1 = gris puro. */
-export function atenuarColor(hex: string, factor = 0.55): string {
+export function atenuarColor(hex: string, factor = 0.85): string {
   const n = hex.replace("#", "");
   const canales = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
   const mezcla = canales.map((c, i) => Math.round(c + (GRIS[i] - c) * factor));
