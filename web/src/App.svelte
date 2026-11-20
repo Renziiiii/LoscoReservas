@@ -344,9 +344,12 @@ los paneles quedan pegados entre sí y a los bordes, esquinas rectas. -->
             <span class="text-muted">Nombre</span>
             <input class="rounded border border-line-strong bg-surface text-fg px-2 py-1" type="text" bind:value={draft.nombre} required />
           </label>
-          <label class="col-span-2 flex flex-col gap-1">
+          <!-- for= al input tel: un <label> que ENVUELVE al widget
+          reenvía el click del título al primer activable del widget (la
+          banderita) y abre el dropdown — bug reparado. -->
+          <label class="col-span-2 flex flex-col gap-1" for="tel-dashboard">
             <span class="text-muted">Teléfono</span>
-            <InputTelefono bind:value={draft.telefono} />
+            <InputTelefono bind:value={draft.telefono} inputId="tel-dashboard" />
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-muted">Fecha</span>

@@ -424,9 +424,11 @@
           required
         />
       </label>
-      <label class="col-span-2 flex flex-col gap-0.5">
+      <!-- for= al input tel: ver nota en App.svelte — un <label> que
+      envuelve al widget reenvía el click al botón de la banderita. -->
+      <label class="col-span-2 flex flex-col gap-0.5" for="tel-iframe">
         <span class="text-muted">Teléfono</span>
-        <InputTelefono bind:value={telefono} />
+        <InputTelefono bind:value={telefono} inputId="tel-iframe" />
         {#if !telefono}
           <span class="text-muted">
             El contacto no tiene teléfono en Chatwoot — elegí el país y anotá

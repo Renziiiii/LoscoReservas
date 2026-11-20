@@ -208,3 +208,21 @@ test("dashboard: el foco abraza la caja del widget como en los demas inputs", as
   });
   expect(interno).toBe("none");
 });
+
+test("dashboard: clic en el titulo Telefono NO abre el selector de paises", async ({ page }) => {
+  await mockDashboardApi(page);
+  await page.goto("/static/calendar/index.html");
+  await page.locator(`[data-date='${RESERVA.fecha}']`).click();
+  await page.locator(".iti").waitFor();
+
+  // Click en el texto del titulo: el dropdown NO debe abrirse —
+  // abre SOLO con clic en el selector de paises (la banderita).
+  await page.getByText(/^Teléfono$/).click();
+  await page.waitForTimeout(300);
+  const expandido = await page.locator(".iti__selected-country").getAttribute("aria-expanded");
+  expect(expandido).toBe("false");
+
+  // Y el clic en la banderita SI lo abre.
+  await page.locator(".iti__selected-country").click();
+  await expect(page.locator(".iti__selected-country")).toHaveAttribute("aria-expanded", "true");
+});
