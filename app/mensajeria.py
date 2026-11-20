@@ -17,7 +17,7 @@ daily cron can run safely any number of times.
 """
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -70,6 +70,32 @@ def reservas_para_recordar_invitados(session: Session, hoy: date) -> list[Reserv
     return _query(session, hoy, Reserva.invitados_enviada_at)
 
 
+def _nota_omision(plantilla: str, horas: int) -> str:
+    """S13 (L57): note text — the user's own wording, kept in Spanish
+    because only the Losco team reads Chatwoot notes."""
+    return (
+        f"Nota automática: no se envió la plantilla de WhatsApp “{plantilla}” "
+        f"porque el requisito de horas sin interactuar ({horas} h) no se "
+        "cumplió — hubo actividad en este chat hace menos de "
+        f"{horas} h, por lo que se omitió este mensaje automático."
+    )
+
+
+def _interaccion_reciente(
+    chatwoot: ChatwootClient, conversacion: dict, horas: int
+) -> bool:
+    """True when the WhatsApp conversation saw ANY message (incoming or
+    outgoing — “interacción” reads as anything happening in the chat, so a
+    conversation the team is actively working on can't be interrupted by an
+    automated template mid-thread) within the last `horas` hours.
+    An empty (freshly created) conversation never blocks a send."""
+    ultimo = chatwoot.ultimo_mensaje(conversacion)
+    if ultimo is None or not ultimo.get("created_at"):
+        return False
+    ultima = datetime.fromtimestamp(int(ultimo["created_at"]), tz=UTC)
+    return datetime.now(UTC) - ultima < timedelta(hours=horas)
+
+
 def _enviar_lote(
     session: Session,
     chatwoot: ChatwootClient,
@@ -77,6 +103,7 @@ def _enviar_lote(
     plantilla: str,
     columna_enviada,
     settings: Settings | None = None,
+    horas_sin_interaccion: int = 0,
 ) -> dict:
     """Try to message each reservation; record per-item success/failure.
 
@@ -86,8 +113,15 @@ def _enviar_lote(
     T6 (tags-estados-sync): when `settings` carries the Chatwoot
     credentials, the conversation asegurar resolved/created gets the
     contact's labels BEFORE the template send (S6/D2 — the new WhatsApp
-    chat inherits the contact's tags even without the webhook)."""
-    report = {"enviados": [], "fallas": []}
+    chat inherits the contact's tags even without the webhook).
+
+    S13 (L57): when `horas_sin_interaccion` > 0 and the conversation saw
+    activity fewer than that many hours ago, the template is NOT sent;
+    instead a private note documents the skip and the reserva is still
+    marked as processed (the trigger window — fecha == hoy±N — does not
+    recur, so leaving it unmarked would only smuggle the skip through
+    silently)."""
+    report = {"enviados": [], "fallas": [], "omitidos": []}
     for reserva in reservas:
         try:
             conversacion = chatwoot.asegurar_conversacion_whatsapp(
@@ -105,6 +139,17 @@ def _enviar_lote(
                         "sync de etiquetas post-asegurar falló para reserva %s: %s",
                         reserva.id, exc,
                     )
+            if horas_sin_interaccion > 0 and _interaccion_reciente(
+                chatwoot, conversacion, horas_sin_interaccion
+            ):
+                chatwoot.agregar_nota(
+                    conversacion, _nota_omision(plantilla, horas_sin_interaccion)
+                )
+                setattr(reserva, columna_enviada.name, datetime.now(UTC))
+                report["omitidos"].append(
+                    {"reserva_id": reserva.id, "motivo": "horas sin interactuar"}
+                )
+                continue
             chatwoot.enviar_mensaje(conversacion, plantilla)
             setattr(reserva, columna_enviada.name, datetime.now(UTC))
             report["enviados"].append(reserva.id)
@@ -119,25 +164,25 @@ def _enviar_lote(
 
 def enviar_confirmaciones(
     session: Session, chatwoot: ChatwootClient, hoy: date, template_confirmacion: str,
-    settings: Settings | None = None,
+    settings: Settings | None = None, horas_sin_interaccion: int = 0,
 ) -> dict:
     """Daily job: T-48h reservation confirmations."""
     reservas = reservas_para_confirmar(session, hoy)
     return _enviar_lote(
         session, chatwoot, reservas,
         template_confirmacion, Reserva.confirmacion_enviada_at,
-        settings=settings,
+        settings=settings, horas_sin_interaccion=horas_sin_interaccion,
     )
 
 
 def enviar_recordatorios_invitados(
     session: Session, chatwoot: ChatwootClient, hoy: date, template_invitados: str,
-    settings: Settings | None = None,
+    settings: Settings | None = None, horas_sin_interaccion: int = 0,
 ) -> dict:
     """Daily job: same-day guest-count confirmations (Valen: 17:00-18:00)."""
     reservas = reservas_para_recordar_invitados(session, hoy)
     return _enviar_lote(
         session, chatwoot, reservas,
         template_invitados, Reserva.invitados_enviada_at,
-        settings=settings,
+        settings=settings, horas_sin_interaccion=horas_sin_interaccion,
     )

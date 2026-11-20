@@ -70,6 +70,17 @@ elegí una plantilla sin variables; si tiene variables, Meta rechaza el envío.<
     {% if errors.plantilla_invitados %}<span class="rounded-lg bg-danger-surface px-3 py-1.5 text-sm text-danger-text">{{ errors.plantilla_invitados }}</span>{% endif %}
   </label>
 
+  <h2 class="mb-2 text-base font-semibold">Requisito de horas sin interactuar</h2>
+  <label class="mb-3 flex flex-col gap-1 text-sm text-muted">Horas sin actividad en el chat antes de enviar
+    <input type="number" name="horas_sin_interaccion" min="0" step="1" required
+      class="rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-fg focus:outline-2 focus:-outline-offset-1 focus:outline-brand"
+      value="{{ values.horas_sin_interaccion if values.horas_sin_interaccion is defined else config.horas_sin_interaccion }}">
+    {% if errors.horas_sin_interaccion %}<span class="rounded-lg bg-danger-surface px-3 py-1.5 text-sm text-danger-text">{{ errors.horas_sin_interaccion }}</span>{% endif %}
+    <span class="text-sm text-muted">Si el chat tuvo actividad hace menos de estas horas, no se envía la plantilla
+      automática: queda una nota privada en el chat explicando que se omitió por el requisito de horas sin
+      interactuar. Con 0 el requisito está desactivado y siempre se envía.</span>
+  </label>
+
   <p id="plantillas-estado" class="mb-3 text-sm text-muted">Cargando plantillas de Chatwoot…</p>
   <script>
     function activarSelector(selectId, inputId, items, opciones) {

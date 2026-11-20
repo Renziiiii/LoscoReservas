@@ -51,6 +51,24 @@ def _asegurar_columna_tag_disparadora(engine: Engine) -> None:
             )
 
 
+def _asegurar_columna_horas_sin_interaccion(engine: Engine) -> None:
+    """Idempotent migration (S13/L57): add `horas_sin_interaccion` to
+    `configuracion` for databases deployed before this feature. Default 0
+    keeps current behavior (the requirement is disabled)."""
+    with engine.begin() as conn:
+        columns = [
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(configuracion)")).fetchall()
+        ]
+        if "horas_sin_interaccion" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE configuracion ADD COLUMN horas_sin_interaccion "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+
+
 def obtener_configuracion(session: Session, settings: Settings) -> Configuracion:
     """Return configuration row 1, seeding it from the env defaults on the
     first access (after that, the DB wins and the env is ignored)."""
@@ -64,6 +82,7 @@ def obtener_configuracion(session: Session, settings: Settings) -> Configuracion
             plantilla_invitados=settings.template_invitados,
             etiqueta_confirmada="Reserva confirmada",
             tag_disparadora="Reserva confirmada",
+            horas_sin_interaccion=0,
         )
         session.add(config)
         session.commit()

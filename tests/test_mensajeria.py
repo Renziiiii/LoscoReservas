@@ -14,7 +14,7 @@ creates one, and toggle_status answers with a short payload (not the full
 conversation)."""
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
@@ -65,6 +65,11 @@ class ChatwootFake:
         self.inboxes = inboxes or [{"id": 2, "channel_type": "Channel::Whatsapp"}]
         self.plantillas = PLANTILLAS_INBOX if plantillas is None else plantillas
         self.message_fails = message_fails or set()  # conversation ids → 500
+        # messages per conversation id: served by GET /conversations/{id}/
+        # messages and appended to by POST /messages (S13: last-interaction
+        # requirement). Pre-seed with |fake.mensajes[conv_id] = [...] where
+        # each entry is {"created_at": <epoch s>, "message_type": 0|1}.
+        self.mensajes: dict[int, list] = {}
         self.next_conversation_id = 500
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -111,10 +116,17 @@ class ChatwootFake:
                 return httpx.Response(200, json={"payload": self.inboxes})
             if "/message_templates" in path:
                 return httpx.Response(200, json={"payload": self.plantillas})
+            if "/conversations/" in path and path.endswith("/messages") and method == "GET":
+                conv_id = int(path.split("/conversations/")[1].split("/")[0])
+                return httpx.Response(200, json={"payload": self.mensajes.get(conv_id, [])})
             if path.endswith("/messages") and method == "POST":
                 conv_id = int(path.split("/conversations/")[1].split("/")[0])
                 if conv_id in self.message_fails:
                     return httpx.Response(500, json={"error": "boom"})
+                json.loads(request.content)  # shape check only; the store keeps timestamps
+                self.mensajes.setdefault(conv_id, []).append(
+                    {"created_at": int(datetime.now(UTC).timestamp()), "message_type": 1}
+                )
                 return httpx.Response(200, json={"id": 999})
             return httpx.Response(404, json={})
 
@@ -526,3 +538,101 @@ def test_sin_settings_no_sincroniza(tmp_path, monkeypatch):
         report = enviar_confirmaciones(session, fake.client(), HOY, "reserva_confirmacion")
     assert report["enviados"] == [1]
     assert llamadas == []
+
+
+# --- S13: requisito de horas sin interacción (L57) ---
+
+
+def test_horas_en_cero_mantiene_el_comportamiento_previo(client):
+    """Default 0 = requisito desactivado: se envía la plantilla y el
+    motor ni siquiera consulta los mensajes de la conversación."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+    )
+    assert report["enviados"] == [1] and report["omitidos"] == []
+    gets_mensajes = [
+        m for m, p, _ in fake.requests
+        if m == "GET" and p.endswith("/messages")
+    ]
+    assert gets_mensajes == []
+
+
+def test_actividad_reciente_omite_plantilla_deja_nota_privada_y_marca(client):
+    """L57: hace menos de {horas} h que hay actividad en el chat → la
+    plantilla NO sale; queda una nota privada en la conversación con el
+    nombre de la plantilla omitida, y la reserva se marca como procesada
+    (idempotencia: el mensaje no se reintenta ni se pierde en silencio)."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
+    hace_30_min = int((datetime.now(UTC) - timedelta(minutes=30)).timestamp())
+    fake.mensajes[55] = [{"created_at": hace_30_min, "message_type": 0}]
+    session = client.app.state.sessionmaker()
+    report = enviar_confirmaciones(
+        session=session,
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+        horas_sin_interaccion=2,
+    )
+    assert report["enviados"] == []
+    assert report["omitidos"] == [{"reserva_id": 1, "motivo": "horas sin interactuar"}]
+    bodies = _posted_bodies(fake)
+    assert len(bodies) == 1
+    assert bodies[0]["private"] is True  # nota para los agentes, no para el cliente
+    assert "template_params" not in bodies[0]
+    assert "reserva_confirmacion" in bodies[0]["content"]
+    reserva = session.get(Reserva, 1)
+    assert reserva.confirmacion_enviada_at is not None
+    session.close()
+
+
+def test_actividad_mas_vieja_que_el_requisito_envia_normal(client):
+    """Hace más de {horas} h del último mensaje → la plantilla sale como
+    siempre y sin nota."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
+    hace_10_h = int((datetime.now(UTC) - timedelta(hours=10)).timestamp())
+    fake.mensajes[55] = [{"created_at": hace_10_h, "message_type": 0}]
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+        horas_sin_interaccion=2,
+    )
+    assert report["enviados"] == [1] and report["omitidos"] == []
+    bodies = _posted_bodies(fake)
+    assert len(bodies) == 1
+    assert bodies[0]["private"] is False  # template, not a note
+    assert bodies[0]["template_params"]["name"] == "reserva_confirmacion"
+
+
+def test_conversacion_nueva_sin_mensajes_envia_normal(client):
+    """Un chat de WhatsApp recién creado no tiene mensajes: el requisito
+    se cumple y la plantilla sale (no hay nada que 'interrumpir')."""
+    crear(client)
+    fake = ChatwootFake()  # contacto inexistente → la conversación se crea nueva
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+        horas_sin_interaccion=2,
+    )
+    assert report["enviados"] == [1] and report["omitidos"] == []
+    bodies = _posted_bodies(fake)
+    assert bodies[0]["template_params"]["name"] == "reserva_confirmacion"

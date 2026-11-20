@@ -373,6 +373,31 @@ class ChatwootClient:
             page += 1
         return conversaciones
 
+    def ultimo_mensaje(self, conversacion: dict) -> dict | None:
+        """Newest message of THIS conversation (any type: incoming or
+        outgoing), or None for an empty conversation. S13: the automated
+        engine uses it to measure the last interaction of the chat —
+        `last_activity_at` was rejected in L38 because it mixes channels
+        and activity semantics; the message list is the ground truth."""
+        data = self._get(
+            f"/api/v1/accounts/{self._account_id}/conversations/{conversacion['id']}/messages"
+        )
+        mensajes = list(data.get("payload") or [])
+        if not mensajes:
+            return None
+        return max(mensajes, key=lambda m: m.get("created_at") or 0)
+
+    def agregar_nota(self, conversacion: dict, texto: str) -> dict:
+        """Post a PRIVATE note (agents-only, never delivered to the
+        customer) on the conversation. S13: used to document why an
+        automated template was skipped."""
+        response = self._http.post(
+            f"/api/v1/accounts/{self._account_id}/conversations/{conversacion['id']}/messages",
+            json={"content": texto, "message_type": "outgoing", "private": True},
+        )
+        response.raise_for_status()
+        return response.json()
+
     # --- sending ---
 
     def enviar_mensaje(self, conversacion: dict, plantilla: str) -> dict:

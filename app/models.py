@@ -31,6 +31,11 @@ class Configuracion(Base):
     # tags-panel-v2 S2: the Chatwoot tag that triggers automated messages; the
     # estado whose `etiqueta_chatwoot` equals this value gates the cron.
     tag_disparadora: Mapped[str] = mapped_column(String(120), default="Reserva confirmada")
+    # S13 (L57): minimum quiet hours before an automated template may go out.
+    # If the reserva's WhatsApp conversation saw activity less than N hours
+    # ago, the engine skips the template and leaves a private note instead.
+    # 0 disables the requirement (historical behavior).
+    horas_sin_interaccion: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class EstadoReserva(Base):
