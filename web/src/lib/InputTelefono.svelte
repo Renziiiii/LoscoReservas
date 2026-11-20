@@ -43,12 +43,23 @@
    * que tiene): las atamos a los roles semánticos de tokens.css, así el
    * widget se integra al resto del formulario y el dark mode sale gratis
    * (las mismas variables cambian de valor bajo .dark). El dropdown pinta
-   * su fondo con --iti-country-selector-bg y hereda el color de texto. */
+   * su fondo con --iti-country-selector-bg y hereda el color de texto.
+   *
+   * El CAJA la dibuja el contenedor .iti — mismo borde, radio y fondo que
+   * los inputs hermanos (rounded border border-line-strong bg-surface);
+   * el selector inline de país lleva su propio borde, que se anula para
+   * no duplicar el recuadro. */
   :global(.iti) {
     --iti-border-color: var(--line-strong);
     --iti-hover-color: var(--surface-hover);
     --iti-country-selector-bg: var(--surface);
     --iti-icon-color: var(--muted);
     width: 100%;
+    border: 1px solid var(--line-strong);
+    border-radius: 0.25rem; /* Tailwind "rounded", como los otros inputs */
+    background: var(--surface);
+  }
+  :global(.iti--inline-country-selector .iti__country-selector) {
+    border: none; /* el recuadro lo pone .iti; el selector no duplica */
   }
 </style>
