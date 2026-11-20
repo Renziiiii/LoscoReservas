@@ -58,6 +58,11 @@
     border: 1px solid var(--line-strong);
     border-radius: 0.25rem; /* Tailwind "rounded", como los otros inputs */
     background: var(--surface);
+    /* Mismo padding-block que py-1 en los inputs hermanos: sin esto el
+     * widget queda 8px más bajito que el resto de los campos del form. */
+    padding-block: var(--spacing);
+    /* El flag button NO lleva padding horizontal: apoya contra el borde
+     * izquierdo, como el widget de Chatwoot. */
   }
   :global(.iti--inline-country-selector .iti__country-selector) {
     border: none; /* el recuadro lo pone .iti; el selector no duplica */
