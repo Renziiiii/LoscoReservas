@@ -1052,7 +1052,9 @@ def test_api_ajustes_get_returns_messaging_config(client):
         "plantilla_confirmacion",
         "plantilla_invitados",
         "tag_disparadora",
+        "horas_sin_interaccion",
     }
+    assert body["horas_sin_interaccion"] == 0  # default: requirement disabled
 
 
 def test_api_ajustes_put_saves_and_returns_updated(client):
@@ -1065,14 +1067,58 @@ def test_api_ajustes_put_saves_and_returns_updated(client):
             "plantilla_invitados": "inv_new",
             "etiqueta_confirmada": "Reserva OK",
             "tag_disparadora": "reserva-confirmada",
+            "horas_sin_interaccion": "2",
         },
     )
     assert response.status_code == 200
     assert response.json()["hora_confirmacion"] == "08:30"
+    assert response.json()["horas_sin_interaccion"] == 2
     body = client.get("/api/ajustes").json()
     assert body["plantilla_invitados"] == "inv_new"
     assert body["tag_disparadora"] == "reserva-confirmada"
+    assert body["horas_sin_interaccion"] == 2
     assert "etiqueta_confirmada" not in body
+
+
+# --- S13: requisito de horas sin interacción ---
+
+
+def test_api_ajustes_put_acepta_cero_horas_sin_interaccion(client):
+    """0 = desactivado: válido.
+
+    L57. Enviado como int (la SPA puede mandar números)."""
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "09:00",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "conf",
+            "plantilla_invitados": "inv",
+            "tag_disparadora": "Reserva confirmada",
+            "horas_sin_interaccion": 0,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["horas_sin_interaccion"] == 0
+
+
+@pytest.mark.parametrize("malo", ["", "abc", "-1", "1.5"])
+def test_api_ajustes_put_rechaza_horas_sin_interaccion_invalidas(client, malo):
+    response = client.put(
+        "/api/ajustes",
+        json={
+            "hora_confirmacion": "09:00",
+            "hora_invitados": "17:15",
+            "plantilla_confirmacion": "conf",
+            "plantilla_invitados": "inv",
+            "tag_disparadora": "Reserva confirmada",
+            "horas_sin_interaccion": malo,
+        },
+    )
+    assert response.status_code == 422
+    assert "horas_sin_interaccion" in response.json()["detail"]
+    body = client.get("/api/ajustes").json()
+    assert body["horas_sin_interaccion"] == 0  # nothing persisted
 
 
 def test_api_ajustes_put_invalid_hour_rejected_without_persist(client):
@@ -1120,3 +1166,52 @@ def test_api_ajustes_put_ignora_etiqueta_vacia(client):
     assert response.status_code == 200
     body = client.get("/api/ajustes").json()
     assert body["plantilla_confirmacion"] == "conf"
+
+
+# --- S13: requisito de horas sin interacción (panel + migración) ---
+
+
+def test_post_ajustes_guarda_horas_sin_interaccion(client):
+    response = client.post(
+        "/ajustes", data=dict(FORM_DATA, horas_sin_interaccion="3"), follow_redirects=False
+    )
+    assert response.status_code == 303
+    body = client.get("/ajustes").text
+    assert 'name="horas_sin_interaccion"' in body
+    assert 'value="3"' in body
+
+
+def test_post_ajustes_rechaza_horas_sin_interaccion_invalidas(client):
+    response = client.post("/ajustes", data=dict(FORM_DATA, horas_sin_interaccion="-2"))
+    assert response.status_code == 200  # re-render with the error
+    assert "horas" in response.text
+
+
+def test_columna_horas_sin_interaccion_migrada_en_db_con_esquema_viejo(tmp_path):
+    """Pins the deployed-server scenario: a configuracion table created
+    before S13 lacks the column; the app must boot and the JSON API must
+    report the default 0 (requirement disabled)."""
+    engine = create_app(_settings(tmp_path)).state.engine
+    from sqlalchemy import text as sql_text
+    from app.db import Base
+    from app.models import Reserva  # register all models
+
+    with engine.begin() as conn:
+        conn.execute(sql_text(
+            "CREATE TABLE configuracion ("
+            "id INTEGER PRIMARY KEY, hora_confirmacion VARCHAR(5), "
+            "hora_invitados VARCHAR(5), plantilla_confirmacion VARCHAR(120), "
+            "plantilla_invitados VARCHAR(120))"
+        ))
+        conn.execute(sql_text(
+            "INSERT INTO configuracion (id, hora_confirmacion, hora_invitados, "
+            "plantilla_confirmacion, plantilla_invitados) "
+            "VALUES (1, '09:00', '17:15', 'reserva_confirmacion', 'invitados_confirmacion')"
+        ))
+    Base.metadata.create_all(engine)  # no-op for existing tables
+
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        _login_cookie(client)
+        body = client.get("/api/ajustes").json()
+        assert body["horas_sin_interaccion"] == 0

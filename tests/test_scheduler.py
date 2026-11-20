@@ -86,3 +86,33 @@ def test_create_app_deja_visibles_los_logs_de_losco(tmp_path):
         losco.setLevel(prev_level)
         losco.handlers[:] = prev_handlers
         losco.propagate = prev_propagate
+
+
+def test_job_confirmaciones_pasa_horas_sin_interaccion_de_la_config(tmp_path, monkeypatch):
+    """S13/L57: the daily job reads the interaction requirement from the DB
+    row (Configuracion), never from env."""
+    import app.scheduler as scheduler_mod
+    from app.ajustes import obtener_configuracion
+    from app.models import Base
+
+    capturadas: dict = {}
+
+    def fake_envio(session, chatwoot, hoy, template, settings=None, horas_sin_interaccion=0):
+        capturadas["horas"] = horas_sin_interaccion
+        return {"enviados": [], "fallas": [], "omitidos": []}
+
+    monkeypatch.setattr(scheduler_mod, "enviar_confirmaciones", fake_envio)
+    settings = Settings(
+        database_path=tmp_path / "reservas.db",
+        users="valen:testpass123",
+        jwt_secret="test-secret-0123456789abcdef0123456789abcdef",
+        _env_file=None,
+    )
+    app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
+    with app.state.sessionmaker() as session:
+        config = obtener_configuracion(session, settings)
+        config.horas_sin_interaccion = 2
+        session.commit()
+    scheduler_mod._job_confirmaciones(app)()
+    assert capturadas["horas"] == 2

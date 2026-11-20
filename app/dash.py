@@ -196,7 +196,7 @@ def actualizar_reserva(
 
 # --- ajustes de mensajería (L19: horas y plantillas en el panel, no env) ---
 
-AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora")
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora", "horas_sin_interaccion")
 
 
 def _render_ajustes(
@@ -272,7 +272,21 @@ def _chatwoot_configurado(settings: Settings) -> bool:
 # edita en la página Tags (/ajustes/tags).
 # tags-panel-v2 (S2/D1): `tag_disparadora` vuelve a la config de mensajería:
 # la tag elegida señala al estado disparador que gatea el cron.
-AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora")
+AJUSTES_CAMPOS = ("hora_confirmacion", "hora_invitados", "plantilla_confirmacion", "plantilla_invitados", "tag_disparadora", "horas_sin_interaccion")
+
+
+HORAS_SIN_INTERACCION_ERROR = (
+    "Usá un número entero de horas mayor o igual a 0 (0 = desactivado)."
+)
+
+
+def _parse_horas_sin_interaccion(raw) -> int:
+    """S13: "2" → 2; anything that is not an integer >= 0 raises
+    ValueError ("", "abc", "1.5", "-1"). 0 disables the requirement."""
+    horas = int(str(raw).strip())  # ValueError on non-integers (incl. "")
+    if horas < 0:
+        raise ValueError
+    return horas
 
 
 def _ajustes_payload(config) -> dict:
@@ -305,11 +319,23 @@ def ajustes_json_put(
             errors[campo] = "Es obligatorio."
     if not values["tag_disparadora"]:
         errors["tag_disparadora"] = "Es obligatoria: decide qué estado dispara los envíos."
+    # S13: horas_sin_interaccion is an integer >= 0 (0 = disabled). Absent
+    # from the payload → keep the stored value; present but invalid → 422.
+    if "horas_sin_interaccion" in payload:
+        try:
+            values["horas_sin_interaccion"] = _parse_horas_sin_interaccion(
+                payload["horas_sin_interaccion"]
+            )
+        except ValueError:
+            errors["horas_sin_interaccion"] = HORAS_SIN_INTERACCION_ERROR
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
     config = obtener_configuracion(session, settings)
+    # S13: absent from the payload → keep the stored requirement untouched.
     for campo in AJUSTES_CAMPOS:
+        if campo == "horas_sin_interaccion" and "horas_sin_interaccion" not in payload:
+            continue
         setattr(config, campo, values[campo])
     session.commit()
 
@@ -327,6 +353,7 @@ def ajustes_submit(
     plantilla_confirmacion: str | None = Form(None),
     plantilla_invitados: str | None = Form(None),
     tag_disparadora: str | None = Form(None),
+    horas_sin_interaccion: str | None = Form(None),
     session: Session = Depends(get_session),
 ):
     """T4: solo mensajería. Un POST legacy que aún envíe
@@ -338,6 +365,7 @@ def ajustes_submit(
         "plantilla_confirmacion": (plantilla_confirmacion or "").strip(),
         "plantilla_invitados": (plantilla_invitados or "").strip(),
         "tag_disparadora": (tag_disparadora or "").strip(),
+        "horas_sin_interaccion": (horas_sin_interaccion or "").strip(),
     }
     errors: dict[str, str] = {}
     for campo in ("hora_confirmacion", "hora_invitados"):
@@ -350,6 +378,17 @@ def ajustes_submit(
             errors[campo] = "El nombre de la plantilla es obligatorio."
     if not values["tag_disparadora"]:
         errors["tag_disparadora"] = "La tag disparadora es obligatoria."
+    # S13: hours without interaction is an integer >= 0 (0 = disabled).
+    # A POST without the field (legacy posters) keeps the stored value.
+    if horas_sin_interaccion is None:
+        values["horas_sin_interaccion"] = None  # keep stored
+    else:
+        try:
+            values["horas_sin_interaccion"] = _parse_horas_sin_interaccion(
+                values["horas_sin_interaccion"]
+            )
+        except ValueError:
+            errors["horas_sin_interaccion"] = HORAS_SIN_INTERACCION_ERROR
     if errors:
         config = obtener_configuracion(session, settings)
         return _render_ajustes(
@@ -369,6 +408,8 @@ def ajustes_submit(
     config.plantilla_confirmacion = values["plantilla_confirmacion"]
     config.plantilla_invitados = values["plantilla_invitados"]
     config.tag_disparadora = values["tag_disparadora"]
+    if values["horas_sin_interaccion"] is not None:  # S13: absent → keep stored
+        config.horas_sin_interaccion = values["horas_sin_interaccion"]
     session.commit()
 
     scheduler = getattr(request.app.state, "scheduler", None)

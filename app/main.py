@@ -9,7 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import sessionmaker
 
 from app import models  # noqa: F401 — registers models on Base before create_all
-from app.ajustes import _asegurar_columna_etiqueta, _asegurar_columna_tag_disparadora
+from app.ajustes import (
+    _asegurar_columna_etiqueta,
+    _asegurar_columna_horas_sin_interaccion,
+    _asegurar_columna_tag_disparadora,
+)
 from app.config import Settings
 from app.db import Base, make_engine
 from app.auth import router as auth_router, get_current_user
@@ -49,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         Base.metadata.create_all(engine)
         _asegurar_columna_etiqueta(engine)
         _asegurar_columna_tag_disparadora(engine)
+        _asegurar_columna_horas_sin_interaccion(engine)
         asegurar_estados(engine, settings)
         from app.estados import backfill_colores
         backfill_colores(engine)

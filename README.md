@@ -26,6 +26,16 @@ dentro de Chatwoot (que sirve WhatsApp, Instagram y Messenger).
   ese mismo texto (el panel avisa si la plantilla elegida tiene variables).
   Cada reserva puede excluirse de los recordatorios (checkbox
   "Enviar recordatorios", default sí).
+- **Requisito de horas sin interactuar** (Ajustes → Mensajes automatizados):
+  horizonte de silencio (en horas, default 0 = desactivado) que evita
+  imprimir una plantilla automática en medio de una conversación activa:
+  si el chat de WhatsApp de la reserva tuvo actividad (de cualquiera de los
+  dos lados) hace menos de esa cantidad de horas, el job NO envía la
+  plantilla — deja una **nota privada** en el chat (solo visible para los
+  agentes, nunca llega al cliente) indicando qué plantilla se omitió y por
+  qué, y marca la reserva como procesada (el mensaje no se reintenta ni se
+  pierde en silencio; con un chat recién creado no hay actividad previa y
+  la plantilla sale normal).
 - **Tags sincronizadas con Chatwoot**: los estados de las reservas son
   configurables (Ajustes → Tags: alta/edición/baja y etiqueta de Chatwoot
   por estado, con selector de las etiquetas de la cuenta; guardado en lote —

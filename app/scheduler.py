@@ -49,7 +49,7 @@ def _job_confirmaciones(app):
             config = obtener_configuracion(session, settings)
             report = enviar_confirmaciones(
                 session, chatwoot, date.today(), config.plantilla_confirmacion,
-                settings=settings,
+                settings=settings, horas_sin_interaccion=config.horas_sin_interaccion,
             )
         logger.info("confirmaciones T-48h: %s", report)
 
@@ -66,7 +66,7 @@ def _job_invitados(app):
             config = obtener_configuracion(session, settings)
             report = enviar_recordatorios_invitados(
                 session, chatwoot, date.today(), config.plantilla_invitados,
-                settings=settings,
+                settings=settings, horas_sin_interaccion=config.horas_sin_interaccion,
             )
         logger.info("recordatorios de invitados: %s", report)
 
