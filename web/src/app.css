@@ -26,29 +26,32 @@
    * un flex centrado lo bajaba un pelín respecto al número de fecha. */
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
 }
 /* Sólo la letra lleva color: sin fondo ni chip (pedido de Dante).
  * Sobre fondo blanco los tokens --*-text (700/800) no se distinguen lo
  * suficiente — en modo claro se fija el tono 900 de la misma escala; el
  * modo oscuro (texto claro sobre zinc-900) conserva los tokens. */
 .losco-cupo--ok {
-  color: rgb(19 78 74); /* teal-900 */
+  color: rgb(4 47 46); /* teal-950: casi negro, distinguible del fondo */
 }
 .losco-cupo--aviso {
-  color: rgb(146 64 14); /* amber-900 */
+  color: rgb(69 26 3); /* amber-950 */
 }
 .losco-cupo--maximo {
-  color: rgb(127 29 29); /* red-900 */
+  color: rgb(69 10 10); /* red-950 */
 }
 .dark .losco-cupo--ok {
-  color: var(--ok-text);
+  color: rgb(153 246 228); /* teal-200 */
+  font-weight: var(--font-weight-bold);
 }
 .dark .losco-cupo--aviso {
-  color: var(--warning-text);
+  color: rgb(252 211 77); /* amber-300 */
+  font-weight: var(--font-weight-bold);
 }
 .dark .losco-cupo--maximo {
-  color: var(--danger-text);
+  color: rgb(252 165 165); /* red-300 */
+  font-weight: var(--font-weight-bold);
 }
 
 /* BUG día de hoy: el tema forma estila el número de fecha de HOY con
