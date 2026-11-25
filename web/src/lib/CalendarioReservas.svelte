@@ -118,8 +118,15 @@
       if (!total) return true;
       const est = estadoOcupacion(total);
       return {
-        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total}p</span></span>`,
+        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
       };
+    },
+
+    // La clase sobre el elemento del número: resetea el estilo especial
+    // que el tema forma le pone al número de HOY (si no, la info de
+    // personas se superponía al número — ver .losco-num-fecha en app.css).
+    dayCellTopInnerClass() {
+      return "losco-num-fecha";
     },
 
     // Semana/Día (timeGrid): el número de fecha vive en la cabecera de la
@@ -131,7 +138,7 @@
       if (!total) return true;
       const est = estadoOcupacion(total);
       return {
-        html: `<span class="inline-flex items-center gap-1">${arg.text}<span class="losco-cupo losco-cupo--${est}">${total}p</span></span>`,
+        html: `<span class="inline-flex items-center gap-1">${arg.text}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
       };
     },
 

@@ -23,24 +23,39 @@
 .losco-cupo {
   display: inline-block;
   margin-top: calc(var(--spacing) * 0.5);
-  padding-inline: calc(var(--spacing) * 1.5);
-  padding-block: 1px;
-  border-radius: calc(infinity * 1px);
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
   font-weight: var(--font-weight-semibold);
 }
+/* Sólo la letra lleva color: sin fondo ni chip (pedido de Dante). */
 .losco-cupo--ok {
-  background: var(--ok-surface);
   color: var(--ok-text);
 }
 .losco-cupo--aviso {
-  background: var(--warning-surface);
   color: var(--warning-text);
 }
 .losco-cupo--maximo {
-  background: var(--danger-surface);
   color: var(--danger-text);
+}
+
+/* BUG día de hoy: el tema forma estila el número de fecha de HOY con
+ * clases hashed (posición/ancho/caja propias) y nuestro contenido custom
+ * (dayCellTopContent) vive en ESE mismo elemento — la info de personas
+ * terminaba superpuesta al número. El hook dayCellTopInnerClass inyecta
+ * esta clase en ese elemento; el reset !important neutraliza el estilo
+ * del tema en cualquier build. */
+.losco-num-fecha {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  height: auto !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
 }
 
 /* Bordes rectos estilo Chatwoot: el tema forma de FullCalendar redondea
