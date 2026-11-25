@@ -22,7 +22,8 @@
 
 .losco-cupo {
   display: inline-block;
-  margin-top: calc(var(--spacing) * 0.5);
+  /* Sin margin-top: era del chip con fondo; junto al número dentro de
+   * un flex centrado lo bajaba un pelín respecto al número de fecha. */
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
   font-weight: var(--font-weight-semibold);
