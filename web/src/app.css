@@ -32,26 +32,25 @@
  * Sobre fondo blanco los tokens --*-text (700/800) no se distinguen lo
  * suficiente — en modo claro se fija el tono 900 de la misma escala; el
  * modo oscuro (texto claro sobre zinc-900) conserva los tokens. */
+/* Colores saturados estándar (green/amber/red de Tailwind), no escalas
+ * teal/neutras: sobre blanco tienen que marcarse sin ambigüedad. */
 .losco-cupo--ok {
-  color: rgb(4 47 46); /* teal-950: casi negro, distinguible del fondo */
+  color: rgb(21 128 61); /* green-700 */
 }
 .losco-cupo--aviso {
-  color: rgb(69 26 3); /* amber-950 */
+  color: rgb(180 83 9); /* amber-600 oscuro */
 }
 .losco-cupo--maximo {
-  color: rgb(69 10 10); /* red-950 */
+  color: rgb(220 38 38); /* red-600 */
 }
 .dark .losco-cupo--ok {
-  color: rgb(153 246 228); /* teal-200 */
-  font-weight: var(--font-weight-bold);
+  color: rgb(74 222 128); /* green-400 */
 }
 .dark .losco-cupo--aviso {
-  color: rgb(252 211 77); /* amber-300 */
-  font-weight: var(--font-weight-bold);
+  color: rgb(251 191 36); /* amber-400 */
 }
 .dark .losco-cupo--maximo {
-  color: rgb(252 165 165); /* red-300 */
-  font-weight: var(--font-weight-bold);
+  color: rgb(248 113 113); /* red-400 */
 }
 
 /* BUG día de hoy: el tema forma estila el número de fecha de HOY con
