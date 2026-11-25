@@ -28,14 +28,26 @@
   line-height: var(--text-xs--line-height);
   font-weight: var(--font-weight-semibold);
 }
-/* Sólo la letra lleva color: sin fondo ni chip (pedido de Dante). */
+/* Sólo la letra lleva color: sin fondo ni chip (pedido de Dante).
+ * Sobre fondo blanco los tokens --*-text (700/800) no se distinguen lo
+ * suficiente — en modo claro se fija el tono 900 de la misma escala; el
+ * modo oscuro (texto claro sobre zinc-900) conserva los tokens. */
 .losco-cupo--ok {
-  color: var(--ok-text);
+  color: rgb(19 78 74); /* teal-900 */
 }
 .losco-cupo--aviso {
-  color: var(--warning-text);
+  color: rgb(146 64 14); /* amber-900 */
 }
 .losco-cupo--maximo {
+  color: rgb(127 29 29); /* red-900 */
+}
+.dark .losco-cupo--ok {
+  color: var(--ok-text);
+}
+.dark .losco-cupo--aviso {
+  color: var(--warning-text);
+}
+.dark .losco-cupo--maximo {
   color: var(--danger-text);
 }
 
