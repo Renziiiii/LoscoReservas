@@ -142,6 +142,17 @@
       };
     },
 
+    // Agenda (listWeek): cada día del listado encabeza con su fecha —
+    // la suma va ahí, mismo criterio que en Semana/Día.
+    listDayHeaderContent(arg) {
+      const total = totales.get(fechaISO(arg.date));
+      if (!total) return true;
+      const est = estadoOcupacion(total);
+      return {
+        html: `<span class="inline-flex items-center gap-1">${arg.text}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
+      };
+    },
+
     dateClick(info) {
       onDateClick?.(info.dateStr.slice(0, 10));
     },
