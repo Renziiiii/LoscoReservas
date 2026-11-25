@@ -64,12 +64,29 @@
     return h.slice(0, 5);
   }
 
+  /** Igual que el iframe (L66): HTML escapado a mano — nombre y detalles
+   * son texto de clientes y viajan dentro de un html: custom. */
+  function esc(s: string): string {
+    return s.replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c]!,
+    );
+  }
+
   const events = $derived.by(() => {
     void estados; // T5: los colores dependen de la lista configurada
     return reservas.map((r) => ({
       id: String(r.id),
       // El horario lo renderiza la propia grilla; repetirlo en el título
-      // lo mostraba dos veces.
+      // lo mostraba dos veces. El título visible lo arma eventContent:
+      // "hora · N 👤 nombre", igual que el iframe de Chatwoot.
       title: `${r.nombre} · ${r.personas}p`,
       start: `${r.fecha}T${hhmm(r.hora)}:00`,
       // `color` alimenta --fc-event-color: es de lo que toma el dot del
@@ -150,6 +167,23 @@
       const est = estadoOcupacion(total);
       return {
         html: `<span class="inline-flex items-center gap-1">${arg.text}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
+      };
+    },
+
+    // Render custom del evento, idéntico al iframe (L66): "hora · N 👤
+    // nombre" con la 2ª línea de detalles truncada. HTML escapado a mano:
+    // nombre/detalles son texto de clientes.
+    eventContent(info: any) {
+      const r = (info.event.extendedProps as { reserva: Reserva }).reserva;
+      const mes = info.view.type === "dayGridMonth";
+      const cabecera = mes
+        ? `${r.personas} 👤 ${esc(r.nombre)}`
+        : `${hhmm(r.hora)} · ${r.personas} 👤 ${esc(r.nombre)}`;
+      const detalle = r.detalles
+        ? `<div class="truncate text-[10px] font-normal opacity-80">${esc(r.detalles)}</div>`
+        : "";
+      return {
+        html: `<div class="overflow-hidden px-1 leading-tight"><div class="truncate text-[11px] font-semibold">${cabecera}</div>${detalle}</div>`,
       };
     },
 
