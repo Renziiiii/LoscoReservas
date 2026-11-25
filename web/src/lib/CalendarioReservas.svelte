@@ -107,15 +107,32 @@
     nowIndicator: true, // barrita roja del horario actual (timeGrid)
     scrollTime: "17:00", // la semana abre a la tarde, hora pico del bar
 
-    dayCellContent(arg) {
+    // Suma de Personas junto al número del día. Ojo: FullCalendar v7
+    // RENOMBRÓ el hook — dayCellContent ya no existe (era código muerto:
+    // FC lo ignoraba en silencio). El número de fecha se customiza con
+    // dayCellTopContent, que REEMPLAZA al número, así que lo incluimos
+    // junto al total. El color sigue la regla de Valen (80 aviso / 100
+    // máximo; reservas.ts).
+    dayCellTopContent(arg) {
       const total = totales.get(fechaISO(arg.date));
       if (!total) return true;
       const est = estadoOcupacion(total);
-      const txt =
-        est === "maximo"
-          ? `${total} pers. — ¡supera el máximo!`
-          : `${total} pers.${est === "aviso" ? " — cerca del máximo" : ""}`;
-      return { html: `<span class="losco-cupo losco-cupo--${est}">${txt}</span>` };
+      return {
+        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total}p</span></span>`,
+      };
+    },
+
+    // Semana/Día (timeGrid): el número de fecha vive en la cabecera de la
+    // columna, así que la suma va ahí. En Mes los headers son los nombres
+    // de día de la semana (sin fecha): sin suma.
+    dayHeaderContent(arg) {
+      if (!arg.view.type.startsWith("timeGrid")) return true;
+      const total = totales.get(fechaISO(arg.date));
+      if (!total) return true;
+      const est = estadoOcupacion(total);
+      return {
+        html: `<span class="inline-flex items-center gap-1">${arg.text}<span class="losco-cupo losco-cupo--${est}">${total}p</span></span>`,
+      };
     },
 
     dateClick(info) {

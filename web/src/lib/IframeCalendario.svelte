@@ -22,6 +22,7 @@
   import FullCalendarHost from "./FullCalendarHost.svelte";
   import InputTelefono from "./InputTelefono.svelte";
   import {
+    estadoOcupacion,
     estiloEstado,
     atenuarColor,
     coloresEstado,
@@ -29,6 +30,7 @@
     ESTADOS,
     nombreDeEstado,
     nombresDeEstados,
+    totalPersonasPorDia,
     type Estado,
     type Reserva,
   } from "./reservas";
@@ -125,6 +127,10 @@
   let reservas = $state<Reserva[]>([]);
   let cal = $state<Calendar>();
   let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+  /** Suma de Personas por día (igual que el dashboard): alimenta los
+   * cupos junto al número de fecha en cada vista del calendario. */
+  const totales = $derived(totalPersonasPorDia(reservas));
 
   function fechaISO(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -359,6 +365,33 @@
     dayMaxEvents: true,
 
     events: $state.snapshot(events) as any,
+
+    // Suma de Personas junto al número del día (misma regla de Valen que
+    // el dashboard, 80 aviso / 100 máximo). Ojo: v7 RENOMBRÓ el hook —
+    // dayCellContent ya no existe; el número de fecha se customiza con
+    // dayCellTopContent, que REEMPLAZA al número, así que lo incluimos
+    // junto al total (Mes).
+    dayCellTopContent(arg) {
+      const total = totales.get(fechaISO(arg.date));
+      if (!total) return true;
+      const est = estadoOcupacion(total);
+      return {
+        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total}p</span></span>`,
+      };
+    },
+
+    // Semana/Día (timeGrid): el número de fecha vive en la cabecera de la
+    // columna, así que la suma va ahí. En Mes los headers son los nombres
+    // de día de la semana (sin fecha): sin suma.
+    dayHeaderContent(arg) {
+      if (!arg.view.type.startsWith("timeGrid")) return true;
+      const total = totales.get(fechaISO(arg.date));
+      if (!total) return true;
+      const est = estadoOcupacion(total);
+      return {
+        html: `<span class="inline-flex items-center gap-1">${arg.text}<span class="losco-cupo losco-cupo--${est}">${total}p</span></span>`,
+      };
+    },
 
     eventContent,
     dateClick(info) {
