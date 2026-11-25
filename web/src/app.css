@@ -22,25 +22,59 @@
 
 .losco-cupo {
   display: inline-block;
-  margin-top: calc(var(--spacing) * 0.5);
-  padding-inline: calc(var(--spacing) * 1.5);
-  padding-block: 1px;
-  border-radius: calc(infinity * 1px);
+  /* Sin margin-top: era del chip con fondo; junto al número dentro de
+   * un flex centrado lo bajaba un pelín respecto al número de fecha. */
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
 }
+/* Sólo la letra lleva color: sin fondo ni chip (pedido de Dante).
+ * Sobre fondo blanco los tokens --*-text (700/800) no se distinguen lo
+ * suficiente — en modo claro se fija el tono 900 de la misma escala; el
+ * modo oscuro (texto claro sobre zinc-900) conserva los tokens. */
+/* Colores saturados estándar (green/amber/red de Tailwind), no escalas
+ * teal/neutras: sobre blanco tienen que marcarse sin ambigüedad. */
 .losco-cupo--ok {
-  background: var(--ok-surface);
-  color: var(--ok-text);
+  color: rgb(21 128 61); /* green-700 */
 }
 .losco-cupo--aviso {
-  background: var(--warning-surface);
-  color: var(--warning-text);
+  color: rgb(180 83 9); /* amber-600 oscuro */
 }
 .losco-cupo--maximo {
-  background: var(--danger-surface);
-  color: var(--danger-text);
+  color: rgb(220 38 38); /* red-600 */
+}
+.dark .losco-cupo--ok {
+  color: rgb(74 222 128); /* green-400 */
+}
+.dark .losco-cupo--aviso {
+  color: rgb(251 191 36); /* amber-400 */
+}
+.dark .losco-cupo--maximo {
+  color: rgb(248 113 113); /* red-400 */
+}
+
+/* BUG día de hoy: el tema forma estila el número de fecha de HOY con
+ * clases hashed (posición/ancho/caja propias) y nuestro contenido custom
+ * (dayCellTopContent) vive en ESE mismo elemento — la info de personas
+ * terminaba superpuesta al número. El hook dayCellTopInnerClass inyecta
+ * esta clase en ese elemento; el reset !important neutraliza el estilo
+ * del tema en cualquier build. */
+.losco-num-fecha {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  height: auto !important;
+  background: transparent !important;
+  /* El tema pinta el número de HOY en color "sobre fondo de color":
+   * al quitarle el fondo con este reset, quedaba blanco sobre blanco
+   * ("desaparecido"). Heredar el color de la celda lo devuelve. */
+  color: inherit !important;
+  padding: 0 !important;
+  border: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
 }
 
 /* Bordes rectos estilo Chatwoot: el tema forma de FullCalendar redondea
