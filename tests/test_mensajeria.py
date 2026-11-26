@@ -636,3 +636,78 @@ def test_conversacion_nueva_sin_mensajes_envia_normal(client):
     assert report["enviados"] == [1] and report["omitidos"] == []
     bodies = _posted_bodies(fake)
     assert bodies[0]["template_params"]["name"] == "reserva_confirmacion"
+
+
+def test_mensajes_de_sistema_no_cuentan_como_interaccion(client):
+    """Sistema (message_type 2: reapertura, cambio de etiqueta) NO es
+    interacción — caso Romy 2026-11-26: el motor reabrió una conversación
+    resuelta para enviarle la plantilla, vio su propio mensaje de sistema
+    un segundo después y se saltó el envío (auto-bloqueo). Una conversación
+    que el motor reabrió hace un segundo debe recibir la plantilla igual."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
+    hace_1_min = int((datetime.now(UTC) - timedelta(minutes=1)).timestamp())
+    fake.mensajes[55] = [
+        {"created_at": hace_1_min, "message_type": 2},  # "reabierta por Reservas"
+        {"created_at": hace_1_min, "message_type": 2},  # "agregó etiqueta"
+    ]
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+        horas_sin_interaccion=2,
+    )
+    assert report["enviados"] == [1] and report["omitidos"] == []
+    bodies = _posted_bodies(fake)
+    assert bodies[0]["template_params"]["name"] == "reserva_confirmacion"
+
+
+def test_nota_privada_no_cuenta_como_interaccion(client):
+    """Una nota privada de agentes (el canal de mensajes del propio motor)
+    no es interacción del chat: no debe bloquear un envío posterior."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
+    hace_30_min = int((datetime.now(UTC) - timedelta(minutes=30)).timestamp())
+    fake.mensajes[55] = [
+        {"created_at": hace_30_min, "message_type": 1, "private": True},
+    ]
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+        horas_sin_interaccion=2,
+    )
+    assert report["enviados"] == [1] and report["omitidos"] == []
+
+
+def test_sistema_reciente_con_mensaje_humano_viejo_envia_normal(client):
+    """Caso mezclado: mensaje de sistema hace 1 min pero el último mensaje
+    REAL (humano: type 0) fue hace 10 h → el requisito se mide contra la
+    interacción real, así que la plantilla sale."""
+    crear(client)
+    fake = ChatwootFake(
+        contact_by_phone={"+5491111111111": CONTACT},
+        conversations={"5491111111111": whatsapp_conversation()},
+    )
+    hace_1_min = int((datetime.now(UTC) - timedelta(minutes=1)).timestamp())
+    hace_10_h = int((datetime.now(UTC) - timedelta(hours=10)).timestamp())
+    fake.mensajes[55] = [
+        {"created_at": hace_1_min, "message_type": 2},
+        {"created_at": hace_10_h, "message_type": 0},
+    ]
+    report = enviar_confirmaciones(
+        session=client.app.state.sessionmaker(),
+        chatwoot=fake.client(),
+        hoy=HOY,
+        template_confirmacion="reserva_confirmacion",
+        horas_sin_interaccion=2,
+    )
+    assert report["enviados"] == [1] and report["omitidos"] == []

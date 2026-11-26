@@ -374,15 +374,23 @@ class ChatwootClient:
         return conversaciones
 
     def ultimo_mensaje(self, conversacion: dict) -> dict | None:
-        """Newest message of THIS conversation (any type: incoming or
-        outgoing), or None for an empty conversation. S13: the automated
-        engine uses it to measure the last interaction of the chat —
-        `last_activity_at` was rejected in L38 because it mixes channels
-        and activity semantics; the message list is the ground truth."""
+        """Newest REAL interaction message of THIS conversation: visible
+        communication a person typed (incoming or outgoing, non-private).
+        System/activity messages (message_type 2: open, reopen, label
+        changes) and private notes don't count — S13's last-interaction
+        measurement must not see the automated engine's own bookkeeping
+        (the 2026-11-26 self-block: the engine reopened a resolved
+        conversation to send it a template, saw its own reopen message one
+        second later and skipped the send). Returns None when the chat
+        has no real interaction at all."""
         data = self._get(
             f"/api/v1/accounts/{self._account_id}/conversations/{conversacion['id']}/messages"
         )
-        mensajes = list(data.get("payload") or [])
+        mensajes = [
+            m
+            for m in data.get("payload") or []
+            if m.get("message_type") != 2 and not m.get("private")
+        ]
         if not mensajes:
             return None
         return max(mensajes, key=lambda m: m.get("created_at") or 0)
