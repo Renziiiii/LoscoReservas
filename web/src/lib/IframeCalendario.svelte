@@ -339,7 +339,9 @@
     ],
     locales: [esLocale],
     locale: "es",
-    initialView: "timeGridWeek",
+    // L70: el bar quiere el iframe abriendo en MES (el autoDecide de
+    // FullCalendar elegía semana según la altura del iframe).
+    initialView: "dayGridMonth",
     headerToolbar: {
       left: "prev,next today",
       center: "title",
@@ -432,7 +434,7 @@
         start: `${r.fecha}T${hhmm(r.hora)}:00`,
         color: propia ? c.bg : atenuarColor(c.bg),
         backgroundColor: propia ? c.bg : atenuarColor(c.bg),
-        borderColor: propia ? c.border : atenuarColor(c.border, 0.75),
+        borderColor: propia ? c.border : atenuarColor(c.border, 0.4),
         classNames: propia ? ["ring-2 ring-brand shadow-md"] : [],
         extendedProps: { reserva: r },
       };
@@ -476,6 +478,15 @@
       ></i>{estiloEstado(estado).label}
     </span>
   {/each}
+  <!-- L70: botón visible para crear (hoy sólo se podía por click en un
+  hueco del calendario). Reusa abrirCrear con hoy/ahora ocupados. -->
+  <button
+    type="button"
+    class="ml-auto text-xs font-medium rounded px-2.5 py-1 bg-brand text-on-brand hover:bg-brand-hover cursor-pointer"
+    onclick={() => abrirCrear(fechaISO(new Date()), horaISO(new Date()))}
+  >
+    + Nueva reserva
+  </button>
 </div>
 <div class="flex h-full flex-col overflow-hidden">
   {#if toast}
