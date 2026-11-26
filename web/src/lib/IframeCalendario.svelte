@@ -375,24 +375,26 @@
     // junto al total (Mes).
     dayCellTopContent(arg) {
       const total = totales.get(fechaISO(arg.date));
-      if (!total) return true;
+      const esHoy = fechaISO(arg.date) === fechaISO(new Date());
+      if (!total && !esHoy) return true; // número default del tema, sin resalto
+      // Día de HOY: el tema pinta el resaltado con un nombre de clase
+      // interno que cambia en cada build — en vez de adivinar clases,
+      // envolvemos el número en un <span> propio con el flag losco-hoy.
+      if (!total) {
+        return { html: `<span class="losco-hoy">${arg.dayNumberText}</span>` };
+      }
       const est = estadoOcupacion(total);
+      const num = esHoy
+        ? `<span class="losco-hoy">${arg.dayNumberText}</span>`
+        : arg.dayNumberText;
       return {
-        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
+        html: `<span class="inline-flex items-center gap-1">${num}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
       };
     },
 
     // La clase sobre el elemento del número: resetea el estilo especial
     // que el tema forma le pone al número de HOY (si no, la info de
     // personas se superponía al número — ver .losco-num-fecha en app.css).
-    dayCellTopInnerClass(arg) {
-      // Hoy lleva una marca propia (ver .losco-num-fecha--hoy): el chip
-      // del tema es un nombre hash que cambia por build.
-      return fechaISO(arg.date) === fechaISO(new Date())
-        ? "losco-num-fecha losco-num-fecha--hoy"
-        : "losco-num-fecha";
-    },
-
     // Semana/Día (timeGrid): el número de fecha vive en la cabecera de la
     // columna, así que la suma va ahí. En Mes los headers son los nombres
     // de día de la semana (sin fecha): sin suma.

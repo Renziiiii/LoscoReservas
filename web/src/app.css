@@ -79,15 +79,15 @@
 
 /* Resaltado del día de HOY en el número (bug 2026-11-26, reporte del
  * usuario: al quitarle el fondo al numérito de personas, el reset de
- * .losco-num-fecha (mismo elemento) también se llevó el chip azul del
- * tema sobre el número de hoy). El chip del tema (fc-forma/fc-classic)
- * usa nombres hash que cambian por build, así que marcamos la celda de
- * hoy nosotros mismos desde dayCellTopInnerClass y la pintamos con el
- * azul del tema — mismo color que el resaltado, sin pelear con el tema. */
-.losco-num-fecha--hoy {
-  background: var(--brand) !important;
-  color: var(--on-brand) !important;
-  padding: 1px 6px !important;
+ * .losco-num-fecha — mismo elemento — también arrancó el chip azul del
+ * tema sobre el número de hoy). El tema marca hoy con un nombre de clase
+ * hash que cambia por build, así que NO se estila contra el tema: el
+ * generador de contenido (dayCellTopContent) envuelve el número de hoy
+ * en <span class="losco-hoy"> y acá le damos el azul del tema. */
+.losco-hoy {
+  background: var(--brand);
+  color: var(--on-brand);
+  padding: 1px 6px;
 }
 
 /* Bordes rectos estilo Chatwoot: el tema forma de FullCalendar redondea
