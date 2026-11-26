@@ -77,6 +77,19 @@
   white-space: nowrap;
 }
 
+/* Resaltado del día de HOY en el número (bug 2026-11-26, reporte del
+ * usuario: al quitarle el fondo al numérito de personas, el reset de
+ * .losco-num-fecha (mismo elemento) también se llevó el chip azul del
+ * tema sobre el número de hoy). El chip del tema (fc-forma/fc-classic)
+ * usa nombres hash que cambian por build, así que marcamos la celda de
+ * hoy nosotros mismos desde dayCellTopInnerClass y la pintamos con el
+ * azul del tema — mismo color que el resaltado, sin pelear con el tema. */
+.losco-num-fecha--hoy {
+  background: var(--brand) !important;
+  color: var(--on-brand) !important;
+  padding: 1px 6px !important;
+}
+
 /* Bordes rectos estilo Chatwoot: el tema forma de FullCalendar redondea
  * botones, eventos y bloques con clases hashed (fc-forma-AAA/Fvv/kmj…).
  * FullCalendar v7 ya no usa .fc como raíz: la raíz es la clase del tema

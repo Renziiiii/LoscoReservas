@@ -385,8 +385,12 @@
     // La clase sobre el elemento del número: resetea el estilo especial
     // que el tema forma le pone al número de HOY (si no, la info de
     // personas se superponía al número — ver .losco-num-fecha en app.css).
-    dayCellTopInnerClass() {
-      return "losco-num-fecha";
+    dayCellTopInnerClass(arg) {
+      // Hoy lleva una marca propia (ver .losco-num-fecha--hoy): el chip
+      // del tema es un nombre hash que cambia por build.
+      return fechaISO(arg.date) === fechaISO(new Date())
+        ? "losco-num-fecha losco-num-fecha--hoy"
+        : "losco-num-fecha";
     },
 
     // Semana/Día (timeGrid): el número de fecha vive en la cabecera de la
