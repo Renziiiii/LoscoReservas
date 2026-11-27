@@ -98,4 +98,8 @@ producción).
   formulario abre igual (S11/L46): el agente anota el número que le pidió
   al cliente — requerido en el form — y al guardar la app lo escribe también
   en el contacto de Chatwoot si estaba vacío (nunca pisa uno existente,
-  fail-soft). Teléfono sin reservas → "Sin reservas para este contacto."
+  fail-soft). El calendario del iframe carga igualmente TODAS las reservas
+  del bar sin teléfono (`/iframe/reservas.json?...&todas=1` ya no exige
+  `tel`); mientras no haya teléfono conocido ninguna reserva se marca como
+  "del contacto" (sin ring azul). Teléfono sin reservas → "Sin reservas
+  para este contacto."

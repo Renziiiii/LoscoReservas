@@ -29,9 +29,11 @@ dentro de Chatwoot (que sirve WhatsApp, Instagram y Messenger).
 - **Requisito de horas sin interactuar** (Ajustes → Mensajes automatizados):
   horizonte de silencio (en horas, default 0 = desactivado) que evita
   imprimir una plantilla automática en medio de una conversación activa:
-  si el chat de WhatsApp de la reserva tuvo actividad (de cualquiera de los
-  dos lados) hace menos de esa cantidad de horas, el job NO envía la
-  plantilla — deja una **nota privada** en el chat (solo visible para los
+  si el chat de WhatsApp de la reserva tuvo una interacción real (un mensaje
+  escrito por la clienta o por un agente; la actividad del propio motor,
+  como reaperturas o notas privadas, no cuenta) hace menos de esa cantidad
+  de horas, el job NO envía la plantilla — deja una **nota privada** en el
+  chat (solo visible para los
   agentes, nunca llega al cliente) indicando qué plantilla se omitió y por
   qué, y marca la reserva como procesada (el mensaje no se reintenta ni se
   pierde en silencio; con un chat recién creado no hay actividad previa y

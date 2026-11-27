@@ -84,11 +84,12 @@ def _nota_omision(plantilla: str, horas: int) -> str:
 def _interaccion_reciente(
     chatwoot: ChatwootClient, conversacion: dict, horas: int
 ) -> bool:
-    """True when the WhatsApp conversation saw ANY message (incoming or
-    outgoing — “interacción” reads as anything happening in the chat, so a
-    conversation the team is actively working on can't be interrupted by an
-    automated template mid-thread) within the last `horas` hours.
-    An empty (freshly created) conversation never blocks a send."""
+    """True when the WhatsApp conversation last saw a REAL interaction — a
+    message a person wrote, incoming or outgoing — within the last `horas`
+    hours (the engine's own system messages — reopen/label activity — and
+    private notes do not count: a chat only the engine itself touched never
+    blocks a send). An empty (freshly created) conversation never blocks a
+    send."""
     ultimo = chatwoot.ultimo_mensaje(conversacion)
     if ultimo is None or not ultimo.get("created_at"):
         return False

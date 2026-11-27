@@ -34,6 +34,7 @@
     type Estado,
     type Reserva,
   } from "./reservas";
+  import { autoGrow } from "./autoGrow";
   import "fullcalendar/skeleton.css";
   import "fullcalendar/themes/forma/theme.css";
   import "fullcalendar/themes/forma/palettes/blue.css";
@@ -146,18 +147,25 @@
   }
 
   /** L61: matchea por dígitos el contacto de Chatwoot (mismo criterio del
-   * backend _por_telefono) para marcar sus reservas en el calendario. */
+   * backend _por_telefono) para marcar sus reservas en el calendario.
+   * Sin teléfono conocido (Instagram chats) nada se marca como propio:
+   * "" === "" marcaría todas las reservas. */
   function esDelContacto(r: Reserva): boolean {
+    if (!telefono) return false;
     return r.telefono.replace(/\D/g, "") === telefono.replace(/\D/g, "");
   }
 
   async function cargar() {
-    if (!key || !telefono) return;
+    if (!key) return;
     try {
       // L61: el calendario muestra TODAS las reservas (disponibilidad del
-      // bar); las del contacto se marcan visualmente (losco-propia).
+      // bar); las del contacto se marcan visualmente (losco-propia). Contactos
+      // de Instagram pueden llegar sin teléfono: tel va sólo si lo hay.
+      const telParam = telefono
+        ? `&tel=${encodeURIComponent(telefono)}`
+        : "";
       const res = await fetch(
-        `/iframe/reservas.json?key=${encodeURIComponent(key)}&tel=${encodeURIComponent(telefono)}&todas=1`,
+        `/iframe/reservas.json?key=${encodeURIComponent(key)}${telParam}&todas=1`,
       );
       if (res.ok) {
         reservas = await res.json();
@@ -292,9 +300,9 @@
     const contact = data.data.contact ?? {};
     contactoId = typeof contact.id === "number" ? contact.id : null;
     contactoNombre = contact.name || "";
-    // S11: a contact without a phone (Instagram chats) blocks nothing —
-    // the agent annotates the number in the create form and the
-    // reservations list loads once the phone is known.
+    // S11: a contact without a phone (Instagram chats) blocks nothing;
+    // the calendar loads all reservations regardless and the agent
+    // annotates the number in the create form.
     telefono = contact.phone_number || contact.phone || "";
     cargar();
   }
@@ -339,7 +347,9 @@
     ],
     locales: [esLocale],
     locale: "es",
-    initialView: "timeGridWeek",
+    // L70: el bar quiere el iframe abriendo en MES (el autoDecide de
+    // FullCalendar elegía semana según la altura del iframe).
+    initialView: "dayGridMonth",
     headerToolbar: {
       left: "prev,next today",
       center: "title",
@@ -373,16 +383,29 @@
     // junto al total (Mes).
     dayCellTopContent(arg) {
       const total = totales.get(fechaISO(arg.date));
-      if (!total) return true;
+      const esHoy = fechaISO(arg.date) === fechaISO(new Date());
+      if (!total && !esHoy) return true; // número default del tema, sin resalto
+      // Día de HOY: el tema pinta el resaltado con un nombre de clase
+      // interno que cambia en cada build — en vez de adivinar clases,
+      // envolvemos el número en un <span> propio con el flag losco-hoy.
+      if (!total) {
+        return { html: `<span class="losco-hoy">${arg.dayNumberText}</span>` };
+      }
       const est = estadoOcupacion(total);
+      const num = esHoy
+        ? `<span class="losco-hoy">${arg.dayNumberText}</span>`
+        : arg.dayNumberText;
       return {
-        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
+        html: `<span class="inline-flex items-center gap-1">${num}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
       };
     },
 
     // La clase sobre el elemento del número: resetea el estilo especial
     // que el tema forma le pone al número de HOY (si no, la info de
     // personas se superponía al número — ver .losco-num-fecha en app.css).
+    // NO marcar "hoy" acá: este hook no recibe arg.date (verificado en el
+    // DOM: la clase --hoy nunca materializaba). El chip azul del día sale
+    // del HTML de dayCellTopContent.
     dayCellTopInnerClass() {
       return "losco-num-fecha";
     },
@@ -432,7 +455,7 @@
         start: `${r.fecha}T${hhmm(r.hora)}:00`,
         color: propia ? c.bg : atenuarColor(c.bg),
         backgroundColor: propia ? c.bg : atenuarColor(c.bg),
-        borderColor: propia ? c.border : atenuarColor(c.border, 0.75),
+        borderColor: propia ? c.border : atenuarColor(c.border, 0.4),
         classNames: propia ? ["ring-2 ring-brand shadow-md"] : [],
         extendedProps: { reserva: r },
       };
@@ -476,6 +499,15 @@
       ></i>{estiloEstado(estado).label}
     </span>
   {/each}
+  <!-- L70: botón visible para crear (hoy sólo se podía por click en un
+  hueco del calendario). Reusa abrirCrear con hoy/ahora ocupados. -->
+  <button
+    type="button"
+    class="ml-auto text-xs font-medium rounded px-2.5 py-1 bg-brand text-on-brand hover:bg-brand-hover cursor-pointer"
+    onclick={() => abrirCrear(fechaISO(new Date()), horaISO(new Date()))}
+  >
+    + Nueva reserva
+  </button>
 </div>
 <div class="flex h-full flex-col overflow-hidden">
   {#if toast}
@@ -577,12 +609,16 @@
         </label>
         <label class="col-span-2 flex flex-col gap-0.5">
           <span class="text-muted">Detalles</span>
-          <input
-            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-            type="text"
+          <!-- Descripción libre: textarea con alto automático (envuelve el
+          texto y crece con el contenido). maxlength = límite del backend. -->
+          <textarea
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1 resize-none"
+            rows="1"
+            maxlength="2000"
             bind:value={draft.detalles}
+            use:autoGrow
             placeholder="ej. cumpleaños, mesa cerca de la ventana…"
-          />
+          ></textarea>
         </label>
         <label class="col-span-2 flex items-center gap-2">
           <input type="checkbox" bind:checked={draft.enviar_recordatorio} />

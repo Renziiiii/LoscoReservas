@@ -52,7 +52,8 @@ test("dashboard: widget con +54 fijo y el POST lleva E.164", async ({ page }) =>
   // El panel "Nueva reserva" se abre con un click en un día del mes (el
   // 21 del mes en curso: la vista inicial es ese mes).
   await page.locator(`[data-date='${RESERVA.fecha}']`).click();
-  await expect(page.getByText("Nueva reserva")).toBeVisible();
+  // El título del panel (el botón "+ Nueva reserva" también matchea el texto).
+  await expect(page.getByRole("heading", { name: "Nueva reserva" })).toBeVisible();
 
   // El dial code "+54" queda fijo al lado de la bandera (estilo Chatwoot).
   const widget = page.locator(".iti");
@@ -100,12 +101,12 @@ test("iframe: contacto sin teléfono muestra el hint y permite anotarlo", async 
       "*",
     ),
   );
-  // Click en un slot del timeGrid (vista semanal inicial) abre el panel.
-  // force: la verificación de clickeabilidad de Playwright no pasa sobre
-  // el timeGrid de FC v7 (elementFromPoint da null en el lane), pero el
-  // click real sí dispara dateClick — verificado manualmente.
-  await page.locator("[data-time='21:00:00']").last().click({ force: true });
-  await expect(page.getByText("Nueva reserva")).toBeVisible();
+  // El iframe abre en vista MES (L70): el click en la celda del día abre
+  // el panel igual que el slot horario de la vista semana.
+  const hoy = new Date().toLocaleDateString("sv");
+  await page.locator(`[data-date='${hoy}']`).first().click({ force: true });
+  // El título del panel (el botón "+ Nueva reserva" también matchea el texto).
+  await expect(page.getByRole("heading", { name: "Nueva reserva" })).toBeVisible();
   await expect(page.getByText("El contacto no tiene teléfono en Chatwoot")).toBeVisible();
 
   const widget = page.locator(".iti");
@@ -115,6 +116,34 @@ test("iframe: contacto sin teléfono muestra el hint y permite anotarlo", async 
   await input.pressSequentially("93210987654");
   // El widget formatea en formato nacional argentino mientras se tipea.
   await expect(input).toHaveValue(/9\s?321\s?098-?7654/);
+});
+
+test("iframe: contacto sin teléfono igual carga las reservas del bar", async ({ page }) => {
+  // Contactos de Instagram llegan sin phone_number: el calendario tiene
+  // que pedir TODAS las reservas (todas=1) sin tel, no quedar vacío.
+  let urlDeReservas = "";
+  await page.route("**/iframe/estados.json*", (route) =>
+    route.fulfill({ json: [{ estado: "pendiente", label: "Pendiente", color: "#94a3b8" }] }),
+  );
+  await page.route("**/iframe/reservas.json*", (route) => {
+    urlDeReservas = route.request().url();
+    return route.fulfill({ json: [RESERVA] });
+  });
+
+  await page.goto("/static/calendar/iframe.html?key=test");
+  await page.evaluate(() =>
+    window.postMessage(
+      { event: "appContext", data: { contact: { id: 7, name: "Nico", phone_number: "" } } },
+      "*",
+    ),
+  );
+
+  // La reserva (de otro contacto) se ve en el calendario igual.
+  await expect(page.getByText("Ana Ruiz").first()).toBeVisible();
+  expect(urlDeReservas).toContain("todas=1");
+  // Además, ningún evento se marca como "propio" (sin teléfono no hay
+  // match): ni ring azul ni color pleno.
+  await expect(page.locator(".ring-2")).toHaveCount(0);
 });
 
 test("iframe: contacto con teléfono pre-carga E.164 y bandera AR", async ({ page }) => {
@@ -134,7 +163,9 @@ test("iframe: contacto con teléfono pre-carga E.164 y bandera AR", async ({ pag
   const evento = page.getByText("Ana Ruiz").first();
   await expect(evento).toBeVisible();
   await evento.click();
-  await expect(page.getByText("Nueva reserva").or(page.getByText(/Reserva Nº/))).toBeVisible();
+  await expect(
+    page.getByRole("heading").filter({ hasText: /Nueva reserva|Reserva Nº/ }),
+  ).toBeVisible();
 
   const widget = page.locator(".iti");
   await expect(widget.locator(".iti__selected-dial-code")).toHaveText("+54");
