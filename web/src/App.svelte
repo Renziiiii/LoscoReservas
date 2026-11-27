@@ -10,6 +10,7 @@
     type Reserva,
   } from "./lib/reservas";
   import CalendarioReservas from "./lib/CalendarioReservas.svelte";
+  import { autoGrow } from "./lib/autoGrow";
   import InputTelefono from "./lib/InputTelefono.svelte";
   // Look vanilla de FullCalendar (como los demos): theme forma + paleta blue.
   // Estos imports van DESPUÉS de app.css (ver app.css: cascade a propósito).
@@ -373,12 +374,17 @@ los paneles quedan pegados entre sí y a los bordes, esquinas rectas. -->
           </label>
           <label class="col-span-2 flex flex-col gap-1">
             <span class="text-muted">Detalles</span>
-            <input
-              class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-              type="text"
+            <!-- Descripción libre: textarea con alto automático (envuelve
+            el texto y crece con el contenido). maxlength = límite real
+            del backend (app/schemas.py). -->
+            <textarea
+              class="rounded border border-line-strong bg-surface text-fg px-2 py-1 resize-none"
+              rows="1"
+              maxlength="2000"
               bind:value={draft.detalles}
+              use:autoGrow
               placeholder="ej. cumpleaños, mesa cerca de la ventana…"
-            />
+            ></textarea>
           </label>
           <label class="col-span-2 flex items-center gap-2">
             <input type="checkbox" bind:checked={draft.enviar_recordatorio} />

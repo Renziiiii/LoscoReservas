@@ -34,6 +34,7 @@
     type Estado,
     type Reserva,
   } from "./reservas";
+  import { autoGrow } from "./autoGrow";
   import "fullcalendar/skeleton.css";
   import "fullcalendar/themes/forma/theme.css";
   import "fullcalendar/themes/forma/palettes/blue.css";
@@ -601,12 +602,16 @@
         </label>
         <label class="col-span-2 flex flex-col gap-0.5">
           <span class="text-muted">Detalles</span>
-          <input
-            class="rounded border border-line-strong bg-surface text-fg px-2 py-1"
-            type="text"
+          <!-- Descripción libre: textarea con alto automático (envuelve el
+          texto y crece con el contenido). maxlength = límite del backend. -->
+          <textarea
+            class="rounded border border-line-strong bg-surface text-fg px-2 py-1 resize-none"
+            rows="1"
+            maxlength="2000"
             bind:value={draft.detalles}
+            use:autoGrow
             placeholder="ej. cumpleaños, mesa cerca de la ventana…"
-          />
+          ></textarea>
         </label>
         <label class="col-span-2 flex items-center gap-2">
           <input type="checkbox" bind:checked={draft.enviar_recordatorio} />
