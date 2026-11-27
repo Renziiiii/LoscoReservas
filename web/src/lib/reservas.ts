@@ -175,9 +175,9 @@ const GRIS = [156, 163, 175]; // gray-400
  * se distingan de un vistazo). Se aplica como backgroundColor/borderColor
  * inline, que FullCalendar pinta por su cuenta — la distinción no depende
  * de que cargue una clase CSS utilitaria. factor 0 = color original,
- * 1 = gris puro. (Historia: factor 0.55 hasta el 2026-11-26; se bajó a
- * 0.25 bg / 0.40 borde por L70.) */
-export function atenuarColor(hex: string, factor = 0.25): string {
+ * 1 = gris puro. (Historia: factor 0.55 hasta 2026-11-26; 0.25 por L70;
+ * 0.75 pedido por el usuario — más apagado aún.) */
+export function atenuarColor(hex: string, factor = 0.75): string {
   const n = hex.replace("#", "");
   const canales = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
   const mezcla = canales.map((c, i) => Math.round(c + (GRIS[i] - c) * factor));
