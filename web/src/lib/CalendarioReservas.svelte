@@ -132,16 +132,25 @@
     // máximo; reservas.ts).
     dayCellTopContent(arg) {
       const total = totales.get(fechaISO(arg.date));
-      if (!total) return true;
+      const esHoy = fechaISO(arg.date) === fechaISO(new Date());
+      if (!total && !esHoy) return true; // número default del tema
+      // Mismo criterio que el iframe: el chip azul del día de HOY se
+      // hornea en el HTML (el reset de .losco-num-fecha le quita el fondo
+      // al contenedor del tema, y sus clases son hash por build).
+      const num = esHoy
+        ? `<span class="losco-hoy">${arg.dayNumberText}</span>`
+        : arg.dayNumberText;
+      if (!total) return { html: num };
       const est = estadoOcupacion(total);
       return {
-        html: `<span class="inline-flex items-center gap-1">${arg.dayNumberText}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
+        html: `<span class="inline-flex items-center gap-1">${num}<span class="losco-cupo losco-cupo--${est}">${total} 👤</span></span>`,
       };
     },
 
     // La clase sobre el elemento del número: resetea el estilo especial
     // que el tema forma le pone al número de HOY (si no, la info de
     // personas se superponía al número — ver .losco-num-fecha en app.css).
+    // NO marcar "hoy" acá: este hook no recibe arg.date.
     dayCellTopInnerClass() {
       return "losco-num-fecha";
     },

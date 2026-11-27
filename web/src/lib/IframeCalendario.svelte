@@ -395,6 +395,13 @@
     // La clase sobre el elemento del número: resetea el estilo especial
     // que el tema forma le pone al número de HOY (si no, la info de
     // personas se superponía al número — ver .losco-num-fecha en app.css).
+    // NO marcar "hoy" acá: este hook no recibe arg.date (verificado en el
+    // DOM: la clase --hoy nunca materializaba). El chip azul del día sale
+    // del HTML de dayCellTopContent.
+    dayCellTopInnerClass() {
+      return "losco-num-fecha";
+    },
+
     // Semana/Día (timeGrid): el número de fecha vive en la cabecera de la
     // columna, así que la suma va ahí. En Mes los headers son los nombres
     // de día de la semana (sin fecha): sin suma.
