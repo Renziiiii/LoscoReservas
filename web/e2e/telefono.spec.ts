@@ -118,6 +118,34 @@ test("iframe: contacto sin teléfono muestra el hint y permite anotarlo", async 
   await expect(input).toHaveValue(/9\s?321\s?098-?7654/);
 });
 
+test("iframe: contacto sin teléfono igual carga las reservas del bar", async ({ page }) => {
+  // Contactos de Instagram llegan sin phone_number: el calendario tiene
+  // que pedir TODAS las reservas (todas=1) sin tel, no quedar vacío.
+  let urlDeReservas = "";
+  await page.route("**/iframe/estados.json*", (route) =>
+    route.fulfill({ json: [{ estado: "pendiente", label: "Pendiente", color: "#94a3b8" }] }),
+  );
+  await page.route("**/iframe/reservas.json*", (route) => {
+    urlDeReservas = route.request().url();
+    return route.fulfill({ json: [RESERVA] });
+  });
+
+  await page.goto("/static/calendar/iframe.html?key=test");
+  await page.evaluate(() =>
+    window.postMessage(
+      { event: "appContext", data: { contact: { id: 7, name: "Nico", phone_number: "" } } },
+      "*",
+    ),
+  );
+
+  // La reserva (de otro contacto) se ve en el calendario igual.
+  await expect(page.getByText("Ana Ruiz").first()).toBeVisible();
+  expect(urlDeReservas).toContain("todas=1");
+  // Además, ningún evento se marca como "propio" (sin teléfono no hay
+  // match): ni ring azul ni color pleno.
+  await expect(page.locator(".ring-2")).toHaveCount(0);
+});
+
 test("iframe: contacto con teléfono pre-carga E.164 y bandera AR", async ({ page }) => {
   await page.route("**/iframe/estados.json*", (route) =>
     route.fulfill({ json: [{ estado: "pendiente", label: "Pendiente", color: "#94a3b8" }] }),

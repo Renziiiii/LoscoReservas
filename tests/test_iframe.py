@@ -211,6 +211,37 @@ def test_iframe_json_todas_devuelve_todo_el_calendario(tmp_path):
         assert {r["nombre"] for r in data} == {"Valen", "Otro"}
 
 
+def test_iframe_json_todas_sin_tel_devuelve_todo_el_calendario(tmp_path):
+    """Contactos de Instagram sin telefono: el calendario muestra las
+    reservas del bar sin depender del tel del contacto (tel opcional
+    cuando todas=1)."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        _login(client)
+        _create(client, nombre="Valen", telefono="+54 9 11 5555-1234")
+        _create(client, nombre="Otro", telefono="+54 9 11 4444-0000", personas=6)
+        response = client.get(
+            "/iframe/reservas.json",
+            params={"todas": "1", "key": EMBED_KEY},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert {r["nombre"] for r in data} == {"Valen", "Otro"}
+
+
+def test_iframe_json_sin_tel_sin_todas_devuelve_422(tmp_path):
+    """Sin `todas`, el tel sigue siendo obligatorio (el endpoint es por
+    telefono; el calendario es el unico consumidor de todas=1)."""
+    app = create_app(_make_iframe_settings(tmp_path))
+    with TestClient(app) as client:
+        response = client.get(
+            "/iframe/reservas.json",
+            params={"key": EMBED_KEY},
+        )
+        assert response.status_code == 422
+
+
 def test_iframe_json_todas_wrong_key_returns_403(tmp_path):
     app = create_app(_make_iframe_settings(tmp_path))
     with TestClient(app) as client:

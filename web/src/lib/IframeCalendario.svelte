@@ -147,18 +147,25 @@
   }
 
   /** L61: matchea por dígitos el contacto de Chatwoot (mismo criterio del
-   * backend _por_telefono) para marcar sus reservas en el calendario. */
+   * backend _por_telefono) para marcar sus reservas en el calendario.
+   * Sin teléfono conocido (Instagram chats) nada se marca como propio:
+   * "" === "" marcaría todas las reservas. */
   function esDelContacto(r: Reserva): boolean {
+    if (!telefono) return false;
     return r.telefono.replace(/\D/g, "") === telefono.replace(/\D/g, "");
   }
 
   async function cargar() {
-    if (!key || !telefono) return;
+    if (!key) return;
     try {
       // L61: el calendario muestra TODAS las reservas (disponibilidad del
-      // bar); las del contacto se marcan visualmente (losco-propia).
+      // bar); las del contacto se marcan visualmente (losco-propia). Contactos
+      // de Instagram pueden llegar sin teléfono: tel va sólo si lo hay.
+      const telParam = telefono
+        ? `&tel=${encodeURIComponent(telefono)}`
+        : "";
       const res = await fetch(
-        `/iframe/reservas.json?key=${encodeURIComponent(key)}&tel=${encodeURIComponent(telefono)}&todas=1`,
+        `/iframe/reservas.json?key=${encodeURIComponent(key)}${telParam}&todas=1`,
       );
       if (res.ok) {
         reservas = await res.json();
@@ -293,9 +300,9 @@
     const contact = data.data.contact ?? {};
     contactoId = typeof contact.id === "number" ? contact.id : null;
     contactoNombre = contact.name || "";
-    // S11: a contact without a phone (Instagram chats) blocks nothing —
-    // the agent annotates the number in the create form and the
-    // reservations list loads once the phone is known.
+    // S11: a contact without a phone (Instagram chats) blocks nothing;
+    // the calendar loads all reservations regardless and the agent
+    // annotates the number in the create form.
     telefono = contact.phone_number || contact.phone || "";
     cargar();
   }

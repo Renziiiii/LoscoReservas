@@ -253,7 +253,7 @@ def iframe_estados_json(
 @router.get("/iframe/reservas.json", include_in_schema=False)
 def iframe_reservas_json(
     request: Request,
-    tel: str = Query(min_length=8),
+    tel: str = Query(default="", min_length=8),
     todas: bool = Query(default=False),
     key: str = Query(default=""),
     session: Session = Depends(get_session),
@@ -264,9 +264,13 @@ def iframe_reservas_json(
         return JSONResponse({"detail": "forbidden"}, status_code=403, headers=headers)
     if todas:
         # L61: the calendar shows every reservation so the agent sees the
-        # bar's availability, not just this contact's bookings.
+        # bar's availability, not just this contact's bookings. Chatwoot
+        # contacts from Instagram arrive without a phone, so tel is
+        # optional here — the calendar loads with or without it.
         reservas = list(session.scalars(select(Reserva).order_by(Reserva.fecha, Reserva.hora)))
     else:
+        if not tel:
+            raise HTTPException(status_code=422, detail="tel requerido mediante 'todas'")
         reservas = _por_telefono(session, tel)
     return JSONResponse(
         [_serialize(r) for r in reservas],
